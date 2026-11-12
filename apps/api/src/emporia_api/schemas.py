@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date as Date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -297,7 +297,7 @@ class FXRateRead(BaseModel):
     base: str
     quote: str
     rate: Decimal
-    date: date
+    date: Date
     provider: Literal["frankfurter"] = "frankfurter"
     rate_basis: Literal["daily_reference_mid_market"] = "daily_reference_mid_market"
     provider_url: str = "https://frankfurter.dev/"
@@ -307,7 +307,7 @@ class FXConvertRequest(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=28, decimal_places=12)
     base: CurrencyCode
     quote: CurrencyCode
-    date: date | None = None
+    date: Date | None = None
 
     @field_validator("base", "quote", mode="before")
     @classmethod
@@ -318,7 +318,7 @@ class FXConvertRequest(BaseModel):
     def validate_conversion(self):
         if self.base == self.quote:
             raise ValueError("Base and quote currencies must be different")
-        if self.date is not None and self.date > date.today():
+        if self.date is not None and self.date > Date.today():
             raise ValueError("Future exchange-rate dates are not supported")
         return self
 
@@ -329,7 +329,7 @@ class FXConvertRead(BaseModel):
     base: str
     quote: str
     rate: Decimal
-    date: date
+    date: Date
     provider: Literal["frankfurter"] = "frankfurter"
     rate_basis: Literal["daily_reference_mid_market"] = "daily_reference_mid_market"
     provider_url: str = "https://frankfurter.dev/"
