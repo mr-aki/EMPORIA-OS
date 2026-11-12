@@ -1029,3 +1029,162 @@ def test_multi_query_research_report_returns_clear_missing_credential_error(
     )
     assert response.status_code == 503
     assert "Brave Search is not configured" in response.json()["detail"]
+
+
+
+def test_agent_can_use_multiple_explicit_research_queries_and_merged_sources(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.network.brave_search import ResearchSource, WebResearchResult
+    from emporia_api.providers import ProviderReply
+
+    queries = [
+        "home storage ecommerce demand",
+        "home storage competitor pricing",
+    ]
+    search_calls = []
+    captured_content = []
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            captured_content.append(request.messages[1].content)
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="Compare demand and competitor pricing using the cited evidence.",
+                prompt_tokens=150,
+                completion_tokens=40,
+                total_tokens=190,
+                request_id="req_multi_query_agent_test",
+            )
+
+    class FakeResearchClient:
+        async def search(
+            self,
+            query,
+            maximum_number_of_tokens=2048,
+            country="US",
+            search_lang="en",
+        ):
+            search_calls.append(query)
+            assert maximum_number_of_tokens == 2048
+            assert country == "PK"
+            assert search_lang == "en"
+            if query == queries[0]:
+                return WebResearchResult(
+                    query=query,
+                    request_id="brave-request-one",
+                    sources=(
+                        ResearchSource(
+                            index=1,
+                            url="https://www.example.com/storage-market?utm_source=search#overview",
+                            title="Home storage ecommerce demand",
+                            hostname="www.example.com",
+                            snippets=("Home storage ecommerce demand continues to grow.",),
+                            age=("Published recently",),
+                        ),
+                    ),
+                )
+            return WebResearchResult(
+                query=query,
+                request_id="brave-request-two",
+                sources=(
+                    ResearchSource(
+                        index=1,
+                        url="https://example.com/storage-market/",
+                        title="Home storage ecommerce demand",
+                        hostname="example.com",
+                        snippets=("Competitor pricing and margins vary.",),
+                        age=("Updated this quarter",),
+                    ),
+                    ResearchSource(
+                        index=2,
+                        url="https://competitor.example.org/pricing",
+                        title="Home storage competitor pricing",
+                        hostname="competitor.example.org",
+                        snippets=("Competitor pricing benchmarks for storage products.",),
+                        age=(),
+                    ),
+                ),
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    monkeypatch.setattr("emporia_api.main.brave_search_client", FakeResearchClient())
+    response = client.post(
+        "/api/v1/agents/product-research-analyst/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Assess this confidential internal product opportunity.",
+            "web_research": True,
+            "research_queries": queries,
+            "research_country": "pk",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    run = response.json()
+    assert run["status"] == "completed"
+    assert search_calls == queries
+    assert len(captured_content) == 1
+    content = captured_content[0]
+    assert "Assess this confidential internal product opportunity." in content
+    assert "Explicit queries: " + ", ".join(queries) in content
+    assert "Query coverage:" in content
+    assert "Matched queries: " + ", ".join(queries) in content
+    assert "Lexical overlap heuristic:" in content
+    assert "source-quality or factual-accuracy score" in content
+    assert (
+        "https://www.example.com/storage-market?utm_source=search#overview"
+        in content
+    )
+    assert "https://competitor.example.org/pricing" in content
+    assert "confidential internal product opportunity" not in " ".join(search_calls)
+    assert len(run["research_sources"]) == 2
+    merged = next(
+        source for source in run["research_sources"]
+        if source["hostname"] == "www.example.com"
+    )
+    assert merged["matched_queries"] == queries
+    assert len(merged["snippets"]) == 2
+    assert "Competitor pricing and margins vary." in content
+    assert merged["lexical_relevance_score"] > 0
+    assert any(
+        event["action"] == "agent.run.completed"
+        for event in client.get("/api/v1/audit-events", headers=auth_headers).json()
+    )
+
+
+def test_agent_research_query_list_is_bounded_and_unambiguous(client, auth_headers):
+    base = {
+        "provider": "openai",
+        "model": "gpt-5",
+        "task": "Assess the market.",
+        "web_research": True,
+    }
+    duplicate = client.post(
+        "/api/v1/agents/product-research-analyst/runs",
+        headers=auth_headers,
+        json={**base, "research_queries": ["market size", " MARKET SIZE "]},
+    )
+    too_many = client.post(
+        "/api/v1/agents/product-research-analyst/runs",
+        headers=auth_headers,
+        json={**base, "research_queries": [f"market query {i}" for i in range(6)]},
+    )
+    ambiguous = client.post(
+        "/api/v1/agents/product-research-analyst/runs",
+        headers=auth_headers,
+        json={
+            **base,
+            "research_query": "market size",
+            "research_queries": ["market size", "market trends"],
+        },
+    )
+    assert duplicate.status_code == 422
+    assert too_many.status_code == 422
+    assert ambiguous.status_code == 422
