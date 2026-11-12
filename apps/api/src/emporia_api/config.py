@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     agent_max_output_tokens: int = Field(default=2048, ge=1, le=4096)
     skill_max_output_tokens: int = Field(default=2048, ge=1, le=4096)
+    agent_runs_per_minute: int = Field(default=10, ge=1, le=600)
+    skill_runs_per_minute: int = Field(default=20, ge=1, le=600)
     jwt_secret: SecretStr | None = None
     jwt_issuer: str = "emporia-os"
     jwt_access_token_minutes: int = 60
