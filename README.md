@@ -7,19 +7,19 @@
 AI-agnostic · Open source · Self-hostable · Human-governed
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-7C5CFC?style=for-the-badge&logo=apache)](LICENSE)
-![Stage: repository foundation](https://img.shields.io/badge/Stage-Repository%20Foundation-0F766E?style=for-the-badge)
+![Stage: executable backend foundation](https://img.shields.io/badge/Stage-Executable%20Backend%20Foundation-0F766E?style=for-the-badge)
 
 </div>
 
 ---
 
-> **Honest status:** This repository is at the documentation and governance foundation stage. It does not yet contain a running API, dashboard, agent runtime, commerce integrations, or production deployment. The project is being built incrementally; planned capabilities are not represented as implemented features.
+> **Honest status:** Emporia now has an executable FastAPI backend with venture records, workspace-scoped access, audit events, a multi-provider AI gateway, advisory specialist agents, and an optional web-research connector. It is an early backend foundation, not yet a complete commerce operating system or a production-ready service. There is no finished dashboard, no live commerce-platform connector, and no autonomous business-action runtime.
 
-## The vision
+## Product direction
 
-Commerce teams work across research, products, suppliers, storefronts, customers, campaigns, fulfilment, finance, and disconnected tools. Emporia OS aims to bring these operations into one coherent workspace while allowing each operator to choose their AI providers and retain control over consequential actions.
+Commerce teams work across research, products, suppliers, storefronts, customers, campaigns, fulfilment, finance, and disconnected tools. Emporia OS aims to bring these operations into one coherent workspace while allowing each operator to choose AI providers and retain control over consequential actions.
 
-The intended platform combines:
+The long-term platform combines:
 
 - **Venture studio** — research opportunities, test assumptions, compare business models, and manage launch gates.
 - **Product and market intelligence** — evaluate products, competitors, sellers, specifications, and demand signals.
@@ -29,21 +29,21 @@ The intended platform combines:
 - **Portfolio and finance** — manage multiple brands and business units with separated records and consolidated visibility.
 - **Governed AI workforce** — delegate bounded work to specialists with explicit tools, budgets, evaluations, and approvals.
 
-These are product goals, not claims of current implementation.
+These are product goals, not claims that every module exists today.
 
-## Current repository contents
+## Implemented backend slices
 
-The initial commit establishes project governance and working standards:
-
-| File | Purpose |
+| Capability | Current implementation |
 |---|---|
-| [AGENTS.md](AGENTS.md) | Repository-wide instructions for human and AI contributors |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution workflow and quality expectations |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community participation standards |
-| [SECURITY.md](SECURITY.md) | Vulnerability reporting and security expectations |
-| [SUPPORT.md](SUPPORT.md) | Support guidance |
-| [CHANGELOG.md](CHANGELOG.md) | Record of committed project changes |
-| [Project status](docs/engineering/PROJECT_STATUS.md) | Capability lifecycle and verified implementation status |
+| API and persistence | FastAPI service, SQLAlchemy records, venture CRUD, health checks, SQLite local mode, PostgreSQL deployment path |
+| Identity and workspaces | Password-based registration/login, JWT access tokens, workspace memberships, role-based write checks, workspace isolation |
+| Audit trail | Persistent audit events for venture, AI, agent, research, and workspace lifecycle operations |
+| AI provider gateway | Server-side adapters for OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible endpoints |
+| Specialist agents | Three versioned advisory agents with persisted runs, usage, status, and history |
+| Web research | Explicit Brave Search LLM Context API connector with source metadata and untrusted-context handling |
+| Database lifecycle | Alembic migrations, Docker Compose startup migration, migration coverage for fresh and legacy schemas |
+
+See [API setup and endpoint documentation](apps/api/README.md) and the [verified project status](docs/engineering/PROJECT_STATUS.md).
 
 ## Engineering principles
 
@@ -54,21 +54,25 @@ The initial commit establishes project governance and working standards:
 5. **Security from the beginning.** Enforce identity, workspace isolation, least privilege, secret hygiene, and approval policies at execution boundaries.
 6. **No production-ready label without proof.** Reliability, security, backup/restore, and deployment gates must pass.
 
-## AI provider direction
+## Explicit limits
 
-The project intends to support multiple hosted and local model providers through explicit adapters. API access, consumer chat subscriptions, and local CLI installations are different products and authorization paths; one does not imply access to another. Provider support will be documented only when the integration is implemented and tested.
+- Agent runs are advisory text generation. Models cannot execute shell commands, browse arbitrary sites, change a storefront, issue refunds, move money, or perform other business actions.
+- Live model and Brave requests require the operator's own server-side API credentials and provider entitlements. Automated tests mock upstream HTTP calls.
+- Workspace invitations, email verification, MFA, password reset, refresh-token rotation, and a full identity-provider integration are not implemented.
+- The frontend dashboard, commerce connectors, async job queue, approval engine, permissioned tool runtime, and business-domain modules remain future implementation work.
+- No production-readiness or security-certification claim is made.
 
-## Development status
+## Development lifecycle
 
-Capabilities follow this lifecycle:
+Capabilities advance through this lifecycle:
 
-`specified → implemented → integrated → evaluated → security_reviewed → production_ready`
+specified → implemented → integrated → evaluated → security_reviewed → production_ready
 
-See [the project status document](docs/engineering/PROJECT_STATUS.md). A capability advances only when its evidence exists.
+A component advances only when the corresponding source, tests, integration evidence, and operational controls exist. See [PROJECT_STATUS.md](docs/engineering/PROJECT_STATUS.md).
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before proposing changes. Prefer focused pull requests with tests, security considerations, and honest status updates.
+Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) before proposing changes. Prefer focused pull requests with tests, security considerations, and honest status updates.
 
 ## License
 
