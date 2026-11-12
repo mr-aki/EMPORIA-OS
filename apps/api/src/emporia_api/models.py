@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from emporia_api.database import Base
@@ -11,6 +11,45 @@ from emporia_api.database import Base
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
+
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WorkspaceMembership(Base):
+    __tablename__ = "workspace_memberships"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_id", name="uq_workspace_membership"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(20), default="viewer", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 class Venture(Base):
     __tablename__ = "ventures"
