@@ -241,3 +241,37 @@ The research request accepts an explicit two-letter country code and search lang
 `country` is passed to Brave as its two-letter search market; `search_lang` accepts a language tag such as `en` or `zh-hans`. Defaults remain `US` and `en`; select the target market that matches the research question rather than assuming the account's location is the target market.
 
 The client spaces requests by at least one second per API process. Upstream HTTP 429 responses are surfaced as HTTP 429 with a bounded `Retry-After` value. This is a per-process guard; horizontally scaled deployments should use a shared rate limiter for a single API key. Review Brave's current [LLM Context documentation](https://api-dashboard.search.brave.com/documentation/services/llm-context) for the live contract, quotas and billing.
+
+
+## Finance reference rates
+
+Emporia includes a keyless connector to the official [Frankfurter v2 API](https://frankfurter.dev/). It exposes dated daily reference observations sourced from central banks and other official providers. No third-party API key is required.
+
+Authenticated endpoints:
+
+- `GET /api/v1/finance/fx/rate/{base}/{quote}?date=YYYY-MM-DD` — latest or historical pair observation.
+- `POST /api/v1/finance/fx/convert` — multiply an amount by the selected pair's reference rate.
+
+Example rate lookup:
+
+```bash
+curl -H "Authorization: Bearer $EMPORIA_API_TOKEN" \\
+  http://localhost:8000/api/v1/finance/fx/rate/USD/PKR
+```
+
+Example conversion:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/finance/fx/convert \\
+  -H "Authorization: Bearer $EMPORIA_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "amount": "125.50",
+    "base": "USD",
+    "quote": "PKR"
+  }'
+```
+
+Historical conversions can include a `date` field, for example `"date": "2025-12-31"`. Amounts and rates use decimal arithmetic. Latest observations are cached in-process for six hours; historical observations are cached for 24 hours. Responses preserve the actual observation date returned by the provider.
+
+**Important limitation:** these are daily reference mid-market rates, not live bank, processor, card-network, remittance, or settlement quotes. They exclude FX spreads, fees, taxes, and provider-specific contractual pricing. Use actual settlement statements for accounting and reconciliation. The provider's documentation says blended rates are free for commercial use, reference data is updated daily, and storing/caching rates is encouraged. Read the [provider FAQ and terms](https://frankfurter.dev/) before choosing a rate source for regulated reporting.

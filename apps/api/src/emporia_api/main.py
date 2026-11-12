@@ -1,5 +1,6 @@
 import json
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -10,6 +11,12 @@ from emporia_api.agents.registry import get_agent, list_agents
 from emporia_api.auth import require_api_token
 from emporia_api.config import settings
 from emporia_api.database import Base, engine, get_session
+from emporia_api.finance.frankfurter import (
+    FrankfurterClient,
+    FXProviderError,
+    FXProviderUnavailable,
+    FXRateNotFound,
+)
 from emporia_api.models import AgentRun, AuditEvent, SkillRun, Venture, utcnow
 from emporia_api.network.brave_search import (
     BraveSearchClient,
@@ -26,6 +33,9 @@ from emporia_api.schemas import (
     ChatCompletionRead,
     ChatCompletionRequest,
     ChatMessage,
+    FXConvertRead,
+    FXConvertRequest,
+    FXRateRead,
     ProviderRead,
     ResearchQuery,
     ResearchRead,
@@ -148,6 +158,7 @@ def list_audit_events(
 
 provider_gateway = ProviderGateway()
 brave_search_client = BraveSearchClient()
+frankfurter_client = FrankfurterClient()
 
 
 @app.get("/api/v1/ai/providers", response_model=list[ProviderRead], tags=["ai"])
@@ -700,3 +711,90 @@ def get_skill_run(run_id: str, session: SessionDep, actor: AuthDep):
     if run is None:
         raise HTTPException(status_code=404, detail="Skill run not found")
     return run
+
+
+@app.get(
+    "/api/v1/finance/fx/rate/{base}/{quote}",
+    response_model=FXRateRead,
+    tags=["finance"],
+)
+async def get_reference_fx_rate(
+    base: str,
+    quote: str,
+    session: SessionDep,
+    actor: AuthDep,
+    observation_date: Annotated[date | None, Query(alias="date")] = None,
+):
+    """Fetch a dated daily reference rate; this is not a live trading quote."""
+    try:
+        result = await frankfurter_client.get_rate(base, quote, observation_date)
+    except FXRateNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FXProviderUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except FXProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    session.add(AuditEvent(
+        workspace_id=settings.workspace_id,
+        actor=actor,
+        action="finance.fx.rate.read",
+        resource_type="fx_pair",
+        resource_id=f"{result.base}/{result.quote}",
+        detail=f"date:{result.date.isoformat()}",
+    ))
+    session.commit()
+    return FXRateRead(
+        base=result.base,
+        quote=result.quote,
+        rate=result.rate,
+        date=result.date,
+    )
+
+
+@app.post(
+    "/api/v1/finance/fx/convert",
+    response_model=FXConvertRead,
+    tags=["finance"],
+)
+async def convert_reference_fx(
+    payload: FXConvertRequest,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Convert an amount using the dated Frankfurter reference-rate observation."""
+    try:
+        result = await frankfurter_client.convert(
+            payload.amount,
+            payload.base,
+            payload.quote,
+            payload.date,
+        )
+    except FXRateNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FXProviderUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except FXProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    session.add(AuditEvent(
+        workspace_id=settings.workspace_id,
+        actor=actor,
+        action="finance.fx.convert.completed",
+        resource_type="fx_pair",
+        resource_id=f"{result.rate.base}/{result.rate.quote}",
+        detail=f"observation:{result.rate.date.isoformat()}",
+    ))
+    session.commit()
+    return FXConvertRead(
+        amount=result.amount,
+        converted_amount=result.converted_amount,
+        base=result.rate.base,
+        quote=result.rate.quote,
+        rate=result.rate.rate,
+        date=result.rate.date,
+    )
