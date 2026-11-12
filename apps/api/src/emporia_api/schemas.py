@@ -101,6 +101,8 @@ class AgentRunCreate(BaseModel):
     temperature: float | None = Field(default=0.2, ge=0, le=2)
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
+    research_country: str = Field(default="US", pattern=r"^[A-Z]{2}$")
+    research_lang: str = Field(default="en", min_length=2, max_length=8, pattern=r"^[A-Za-z]{2,8}$")
 
     @model_validator(mode="after")
     def require_explicit_research_query(self):
@@ -148,6 +150,8 @@ class AgentRunRead(BaseModel):
 
 class ResearchQuery(BaseModel):
     query: str = Field(min_length=1, max_length=600)
+    country: str = Field(default="US", pattern=r"^[A-Z]{2}$")
+    search_lang: str = Field(default="en", min_length=2, max_length=8, pattern=r"^[A-Za-z]{2,8}$")
     maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
 
 
