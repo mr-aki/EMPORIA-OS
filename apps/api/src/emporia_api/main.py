@@ -45,6 +45,10 @@ from emporia_api.network.brave_search import (
     ResearchRateLimited,
     ResearchRequestError,
 )
+from emporia_api.output_budgets import (
+    OutputTokenBudgetExceeded,
+    enforce_workspace_output_budget,
+)
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
 from emporia_api.schemas import (
@@ -293,6 +297,24 @@ async def execute_agent(
         return existing
 
     try:
+        enforce_workspace_output_budget(
+            session, actor.workspace_id, payload.max_tokens
+        )
+    except OutputTokenBudgetExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Workspace monthly output-token budget exceeded",
+                "limit": exc.limit,
+                "used": exc.used,
+                "reserved": exc.reserved,
+                "requested": exc.requested,
+            },
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
+    try:
         consume_workspace_rate_limit(
             session,
             actor.workspace_id,
@@ -315,6 +337,7 @@ async def execute_agent(
         model=payload.model,
         status="running",
         task=payload.task,
+        requested_max_tokens=payload.max_tokens,
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )
@@ -478,6 +501,7 @@ async def execute_agent(
     try:
         reply = await provider_gateway.complete(chat_request)
     except ProviderNotConfigured as exc:
+        run.budget_charged_tokens = payload.max_tokens
         run.status = "failed"
         run.error_message = str(exc)
         run.completed_at = utcnow()
@@ -492,6 +516,7 @@ async def execute_agent(
         session.commit()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRequestError as exc:
+        run.budget_charged_tokens = payload.max_tokens
         run.status = "failed"
         run.error_message = str(exc)
         run.completed_at = utcnow()
@@ -506,6 +531,7 @@ async def execute_agent(
         session.commit()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
+        run.budget_charged_tokens = payload.max_tokens
         run.status = "failed"
         run.error_message = "Unexpected provider execution failure"
         run.completed_at = utcnow()
@@ -525,6 +551,11 @@ async def execute_agent(
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
+    run.budget_charged_tokens = (
+        reply.completion_tokens
+        if reply.completion_tokens is not None
+        else payload.max_tokens
+    )
     run.provider_request_id = reply.request_id
     run.completed_at = utcnow()
     session.add(AuditEvent(
@@ -849,6 +880,24 @@ async def execute_skill(
         return existing
 
     try:
+        enforce_workspace_output_budget(
+            session, actor.workspace_id, payload.max_tokens
+        )
+    except OutputTokenBudgetExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Workspace monthly output-token budget exceeded",
+                "limit": exc.limit,
+                "used": exc.used,
+                "reserved": exc.reserved,
+                "requested": exc.requested,
+            },
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
+    try:
         consume_workspace_rate_limit(
             session,
             actor.workspace_id,
@@ -871,6 +920,7 @@ async def execute_skill(
         model=payload.model,
         status="running",
         inputs_json=json.dumps(payload.inputs, ensure_ascii=False, allow_nan=False),
+        requested_max_tokens=payload.max_tokens,
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )
@@ -934,6 +984,7 @@ async def execute_skill(
     try:
         reply = await provider_gateway.complete(request)
     except ProviderNotConfigured as exc:
+        run.budget_charged_tokens = payload.max_tokens
         run.status = "failed"
         run.error_message = str(exc)
         run.completed_at = utcnow()
@@ -944,6 +995,7 @@ async def execute_skill(
         session.commit()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRequestError as exc:
+        run.budget_charged_tokens = payload.max_tokens
         run.status = "failed"
         run.error_message = str(exc)
         run.completed_at = utcnow()
@@ -954,6 +1006,7 @@ async def execute_skill(
         session.commit()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
+        run.budget_charged_tokens = payload.max_tokens
         run.status = "failed"
         run.error_message = "Unexpected skill execution failure"
         run.completed_at = utcnow()
@@ -970,6 +1023,11 @@ async def execute_skill(
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
+    run.budget_charged_tokens = (
+        reply.completion_tokens
+        if reply.completion_tokens is not None
+        else payload.max_tokens
+    )
     run.provider_request_id = reply.request_id
     run.completed_at = utcnow()
     session.add(AuditEvent(

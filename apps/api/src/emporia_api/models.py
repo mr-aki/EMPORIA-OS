@@ -99,6 +99,8 @@ class AgentRun(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     research_sources_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
@@ -137,6 +139,18 @@ class WorkspaceExecutionRateLimit(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class WorkspaceOutputTokenBudget(Base):
+    __tablename__ = "workspace_output_token_budgets"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="uq_workspace_output_token_budget"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    monthly_output_token_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class SkillRun(Base):
     __tablename__ = "skill_runs"
     __table_args__ = (
@@ -159,6 +173,8 @@ class SkillRun(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

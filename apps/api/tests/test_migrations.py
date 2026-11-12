@@ -32,7 +32,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0004_workspace_rate_limits"
+        assert revision == "0005_workspace_output_budgets"
         assert {"idempotency_key", "request_fingerprint"}.issubset(
             {column["name"] for column in inspector.get_columns("agent_runs")}
         )
@@ -42,6 +42,10 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         assert "uq_agent_runs_workspace_idempotency" in {
             item["name"] for item in inspector.get_unique_constraints("agent_runs")
         }
+        assert {"requested_max_tokens", "budget_charged_tokens"}.issubset(
+            {column["name"] for column in inspector.get_columns("agent_runs")}
+        )
+        assert "workspace_output_token_budgets" in inspector.get_table_names()
         assert "workspace_execution_rate_limits" in inspector.get_table_names()
         assert "uq_skill_runs_workspace_idempotency" in {
             item["name"] for item in inspector.get_unique_constraints("skill_runs")
@@ -51,6 +55,15 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             item["name"]
             for item in inspector.get_unique_constraints("workspace_execution_rate_limits")
         }
+        assert "workspace_output_token_budgets" in inspector.get_table_names()
+        assert "uq_workspace_output_token_budget" in {
+            item["name"]
+            for item in inspector.get_unique_constraints("workspace_output_token_budgets")
+        }
+        for table_name in ("agent_runs", "skill_runs"):
+            assert {"requested_max_tokens", "budget_charged_tokens"}.issubset(
+                {column["name"] for column in inspector.get_columns(table_name)}
+            )
     finally:
         engine.dispose()
 
