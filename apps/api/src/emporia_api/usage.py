@@ -163,7 +163,7 @@ def _aggregate(
         .group_by(func.date(run_model.created_at), run_model.status)
     ).all()
     daily_map: dict[date, dict[str, int]] = {}
-    for day_value, status, count, prompt, completion, total in daily_rows:
+    for day_value, run_status, count, prompt, completion, total in daily_rows:
         day = date.fromisoformat(str(day_value)[:10])
         values = daily_map.setdefault(
             day,
@@ -178,7 +178,7 @@ def _aggregate(
             },
         )
         values["runs"] += count
-        status_key = f"{status}_runs"
+        status_key = f"{run_status}_runs"
         if status_key in values:
             values[status_key] += count
         values["prompt_tokens"] += prompt
