@@ -1,6 +1,7 @@
 from emporia_api.providers import ProviderReply
 
 
+
 MARKET_INPUTS = {
     "market": "Reusable home storage",
     "geography": "United Kingdom",
