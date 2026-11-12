@@ -1,5 +1,7 @@
 import json
+from datetime import date as Date
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -333,3 +335,52 @@ class SkillRunRead(BaseModel):
     completed_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$")]
+
+
+class FXRateRead(BaseModel):
+    base: str
+    quote: str
+    rate: Decimal
+    date: Date
+    provider: Literal["frankfurter"] = "frankfurter"
+    rate_basis: Literal["daily_reference_mid_market"] = "daily_reference_mid_market"
+    provider_url: str = "https://frankfurter.dev/"
+
+
+class FXConvertRequest(BaseModel):
+    amount: Decimal = Field(gt=0, max_digits=28, decimal_places=12)
+    base: CurrencyCode
+    quote: CurrencyCode
+    date: Date | None = None
+
+    @field_validator("base", "quote", mode="before")
+    @classmethod
+    def normalize_currency(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_conversion(self):
+        if self.base == self.quote:
+            raise ValueError("Base and quote currencies must be different")
+        if self.date is not None and self.date > Date.today():
+            raise ValueError("Future exchange-rate dates are not supported")
+        return self
+
+
+class FXConvertRead(BaseModel):
+    amount: Decimal
+    converted_amount: Decimal
+    base: str
+    quote: str
+    rate: Decimal
+    date: Date
+    provider: Literal["frankfurter"] = "frankfurter"
+    rate_basis: Literal["daily_reference_mid_market"] = "daily_reference_mid_market"
+    provider_url: str = "https://frankfurter.dev/"
+    disclaimer: str = (
+        "Daily reference rate, not a live trading quote or guaranteed settlement rate."
+    )
+
