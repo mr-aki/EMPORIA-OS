@@ -120,7 +120,7 @@ def _aggregate(
         .order_by(run_model.provider, run_model.model, run_model.status)
     ).all()
     grouped: dict[tuple[str, str], dict[str, int]] = {}
-    for provider, model, status, count, prompt, completion, total in grouped_rows:
+    for provider, model, run_status, count, prompt, completion, total in grouped_rows:
         row = grouped.setdefault(
             (provider, model),
             {
@@ -320,7 +320,7 @@ class ModelPriceUpdate(BaseModel):
     """Operator-supplied USD rates; prices are never inferred from model names."""
 
     input_usd_per_million_tokens: Decimal = Field(
-        ge=Decimal("0"), max_digits=20, decimal_places=10
+        ge=Decimal(0), max_digits=20, decimal_places=10
     )
     output_usd_per_million_tokens: Decimal = Field(
         ge=Decimal("0"), max_digits=20, decimal_places=10
