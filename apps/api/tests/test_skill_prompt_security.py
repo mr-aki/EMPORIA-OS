@@ -1,5 +1,6 @@
 """Regression tests for skill prompt boundaries and shared safety guardrails."""
 
+from emporia_api.providers import ProviderReply
 from emporia_api.skills.registry import SKILLS
 
 
@@ -18,8 +19,6 @@ GLOBAL_GUARDRAILS = (
 
 
 def test_every_registered_skill_prompt_includes_global_security_boundaries():
-    from emporia_api.skills.registry import SKILLS
-
     assert len(SKILLS) == 60
 
     for skill in SKILLS:
@@ -58,7 +57,7 @@ def test_adversarial_input_remains_in_user_message_not_system_prompt(
             return ProviderReply(
                 provider="openai",
                 model="gpt-5",
-                content="## Executive verdict\nTreat supplied evidence cautiously.",
+                content="## Executive verdict\\nTreat supplied evidence cautiously.",
                 prompt_tokens=180,
                 completion_tokens=20,
                 total_tokens=200,
