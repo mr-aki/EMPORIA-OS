@@ -40,9 +40,11 @@ These are product goals, not claims that every module exists today.
 | Audit trail | Persistent audit events for venture, AI, agent, research, and workspace lifecycle operations |
 | AI provider gateway | Server-side adapters for OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible endpoints |
 | Specialist agents | Eight versioned advisory agents with category/deliverable metadata, persisted runs, usage, status, and history |
+| Commerce skills | 30 versioned advisory procedures across customer, sourcing, marketing, SEO, operations, pricing, and merchandising |
 | Commerce skills | 15 versioned advisory procedures with typed inputs, validation, token ceilings, workspace-scoped run history, and audit events |
 | Web research | Explicit Brave Search LLM Context API connector with source metadata and untrusted-context handling |
 | Database lifecycle | Alembic migrations, Docker Compose startup migration, migration coverage for fresh and legacy schemas |
+| Finance reference rates | Authenticated historical/latest FX lookups and Decimal conversion through the keyless Frankfurter daily-reference API |
 
 See [API setup and endpoint documentation](apps/api/README.md) and the [verified project status](docs/engineering/PROJECT_STATUS.md).
 
