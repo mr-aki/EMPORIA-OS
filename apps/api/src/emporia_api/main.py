@@ -53,7 +53,6 @@ from emporia_api.schemas import (
     WorkspaceSummary,
 )
 
-
 app = FastAPI(title=settings.app_name, version="0.1.0")
 SessionDep = Annotated[Session, Depends(get_session)]
 AuthDep = Annotated[Principal, Depends(get_current_principal)]
