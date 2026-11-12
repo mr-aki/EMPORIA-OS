@@ -302,3 +302,17 @@ curl -X POST http://localhost:8000/api/v1/finance/fx/convert \\
 Historical conversions can include a `date` field, for example `"date": "2025-12-31"`. Amounts and rates use decimal arithmetic. Latest observations are cached in-process for six hours; historical observations are cached for 24 hours. Responses preserve the actual observation date returned by the provider.
 
 **Important limitation:** these are daily reference mid-market rates, not live bank, processor, card-network, remittance, or settlement quotes. They exclude FX spreads, fees, taxes, and provider-specific contractual pricing. Use actual settlement statements for accounting and reconciliation. The provider's documentation says blended rates are free for commercial use, reference data is updated daily, and storing/caching rates is encouraged. Read the [provider FAQ and terms](https://frankfurter.dev/) before choosing a rate source for regulated reporting.
+
+## Workspace usage accounting
+
+Authenticated workspace owners and members can retrieve persisted model-token usage:
+
+~~~http
+GET /api/v1/usage/summary
+Authorization: Bearer <access-token>
+~~~
+
+The response aggregates agent and skill runs, including run status counts, provider-reported prompt/completion/total tokens, and provider/model breakdowns. Every query is scoped to the workspace bound to the access token. A provider that does not report token usage contributes zero for the unavailable counters.
+
+This endpoint reports token usage, not monetary spend. Emporia does not invent costs from model names: a future cost ledger must use an explicitly configured, versioned pricing source before reporting currency amounts.
+
