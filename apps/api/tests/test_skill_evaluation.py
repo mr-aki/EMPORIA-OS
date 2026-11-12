@@ -4,7 +4,7 @@ from emporia_api.skills.registry import SKILLS, get_skill
 
 def test_evaluator_accepts_complete_required_section_headings_for_every_skill():
     for skill in SKILLS:
-        output = "\\n\\n".join(f"## {section}\\nEvidence and analysis." for section in skill.output_sections)
+        output = "\n\n".join(f"## {section}\nEvidence and analysis." for section in skill.output_sections)
         result = evaluate_skill_output(skill, output)
 
         assert result["passed"] is True, skill.id
@@ -17,7 +17,7 @@ def test_evaluator_reports_missing_sections_without_quality_overclaim():
     skill = get_skill("contribution-margin-waterfall")
     assert skill is not None
 
-    result = evaluate_skill_output(skill, "## Revenue-to-contribution waterfall\\nNet sales are shown.")
+    result = evaluate_skill_output(skill, "## Revenue-to-contribution waterfall\nNet sales are shown.")
 
     assert result["passed"] is False
     assert result["present_sections"] == ["Revenue-to-contribution waterfall"]
