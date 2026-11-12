@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from pydantic import (
     BaseModel,
     ConfigDict,
+    EmailStr,
     Field,
     StringConstraints,
     field_validator,
@@ -132,16 +133,6 @@ class AgentRunCreate(BaseModel):
     def normalize_research_language(cls, value: Any) -> Any:
         return value.strip().lower() if isinstance(value, str) else value
 
-    @field_validator("research_query", mode="before")
-    @classmethod
-    def normalize_research_query(cls, value: Any) -> Any:
-        if value is None or not isinstance(value, str):
-            return value
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("research_query must not be blank")
-        return normalized
-
     @model_validator(mode="after")
     def require_explicit_research_query(self):
         if self.web_research and not self.research_query:
@@ -197,16 +188,6 @@ class ResearchQuery(BaseModel):
     )
     maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=32768)
 
-    @field_validator("country", mode="before")
-    @classmethod
-    def normalize_country(cls, value: Any) -> Any:
-        return value.strip().upper() if isinstance(value, str) else value
-
-    @field_validator("search_lang", mode="before")
-    @classmethod
-    def normalize_search_language(cls, value: Any) -> Any:
-        return value.strip().lower() if isinstance(value, str) else value
-
     @field_validator("query", mode="before")
     @classmethod
     def normalize_query(cls, value: Any) -> Any:
@@ -217,12 +198,76 @@ class ResearchQuery(BaseModel):
             raise ValueError("query must not be blank")
         return normalized
 
+    @field_validator("country", mode="before")
+    @classmethod
+    def normalize_country(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("search_lang", mode="before")
+    @classmethod
+    def normalize_search_language(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
+
 
 
 class ResearchRead(BaseModel):
     query: str
     sources: list[ResearchSourceRead]
     request_id: str | None = None
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=128)
+    display_name: str = Field(min_length=1, max_length=120)
+    workspace_name: str = Field(min_length=1, max_length=160)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+    workspace_id: str | None = Field(default=None, max_length=36)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class AuthTokenRead(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user_id: str
+    workspace_id: str
+
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
+class WorkspaceSummary(BaseModel):
+    id: str
+    name: str
+    role: str
+
+
+class WorkspaceCreated(WorkspaceSummary):
+    created_at: datetime
+
+
+class AuthMeRead(BaseModel):
+    user_id: str
+    email: EmailStr
+    display_name: str
+    is_active: bool
+    workspaces: list[WorkspaceSummary]
+
 
 
 class SkillInputRead(BaseModel):
@@ -341,3 +386,4 @@ class FXConvertRead(BaseModel):
     disclaimer: str = (
         "Daily reference rate, not a live trading quote or guaranteed settlement rate."
     )
+
