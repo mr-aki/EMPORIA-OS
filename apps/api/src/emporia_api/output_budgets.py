@@ -1,5 +1,4 @@
-from calendar import monthrange
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 from sqlalchemy import case, func, select, update
@@ -10,6 +9,7 @@ from sqlalchemy.orm import Session
 from emporia_api.models import (
     AgentRun,
     SkillRun,
+    Workspace,
     WorkspaceOutputTokenBudget,
 )
 
@@ -122,6 +122,13 @@ def enforce_workspace_output_budget(
     requested_max_tokens reservation is committed or rolled back.
     """
     current = now or datetime.now(UTC)
+    # Serialize first-time policy activation with new executions as well as
+    # updates to an already configured policy row.
+    session.execute(
+        update(Workspace)
+        .where(Workspace.id == workspace_id)
+        .values(name=Workspace.name)
+    )
     policy_table = WorkspaceOutputTokenBudget.__table__
     lock_result = session.execute(
         update(policy_table)
@@ -157,6 +164,12 @@ def set_workspace_output_budget(
 ) -> None:
     """Atomically create or update the workspace output-token policy."""
     current = now or datetime.now(UTC)
+    # Keep policy creation/update ordered with execution reservations.
+    session.execute(
+        update(Workspace)
+        .where(Workspace.id == workspace_id)
+        .values(name=Workspace.name)
+    )
     values = {
         "id": str(uuid4()),
         "workspace_id": workspace_id,
