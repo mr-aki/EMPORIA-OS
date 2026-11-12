@@ -186,6 +186,16 @@ class ResearchQuery(BaseModel):
     )
     maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=32768)
 
+    @field_validator("query", mode="before")
+    @classmethod
+    def normalize_query(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("query must not be blank")
+        return normalized
+
     @field_validator("country", mode="before")
     @classmethod
     def normalize_country(cls, value: Any) -> Any:
