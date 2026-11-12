@@ -104,7 +104,7 @@ def _resolve_current_principal(session: Session, job: BackgroundJob) -> Principa
     return principal
 
 
-async def _renew_job_lease(job_id: str, worker_id: str) -> bool:
+def _renew_job_lease(job_id: str, worker_id: str) -> bool:
     """Extend a running job lease only while the caller still owns it."""
     now = utcnow()
     with SessionLocal() as session:
