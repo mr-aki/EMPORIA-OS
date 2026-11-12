@@ -134,3 +134,50 @@ curl -X POST http://localhost:8000/api/v1/agents/commerce-strategist/runs \\
 Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. A run is marked failed when its provider is not configured or the upstream provider rejects/fails the request.
 
 **Execution boundary:** these first agents are advisory text agents. They do not have browser access, shell access, store-admin credentials, payment access, or action tools. They cannot autonomously change a live business. The next runtime milestones are queued/background execution, scoped tool grants, human approval gates, budget enforcement, and sandboxed integrations.
+
+
+## Network research connector
+
+Emporia can retrieve fresh, extracted web context through the official [Brave Search LLM Context API](https://api-dashboard.search.brave.com/documentation/services/llm-context).
+
+Configure a Brave Search API key on the API server:
+
+```bash
+export EMPORIA_BRAVE_SEARCH_API_KEY="..."
+```
+
+Or add `EMPORIA_BRAVE_SEARCH_API_KEY` to the deployment secret store / local `.env` file. The key is never accepted from browsers or agent request bodies and is never returned by the API.
+
+Authenticated research endpoint:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/research/search \\
+  -H "Authorization: Bearer $EMPORIA_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "query": "2026 ecommerce returns trends official industry report",
+    "maximum_number_of_tokens": 4000
+  }'
+```
+
+An agent can explicitly include network research:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agents/product-research-analyst/runs \\
+  -H "Authorization: Bearer $EMPORIA_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "provider": "openai",
+    "model": "gpt-5",
+    "task": "Assess the demand and operational risks for a reusable home storage product.",
+    "web_research": true,
+    "research_query": "reusable home storage ecommerce demand customer complaints 2026",
+    "max_tokens": 1800
+  }'
+```
+
+**Privacy:** `research_query` is a separate, explicit field. Emporia never sends the full task or its private business context to Brave automatically. Only the supplied research query is sent to the external search provider. Use a general query and exclude customer personal data, credentials, confidential supplier terms, and other private material.
+
+The response contains source URLs, titles, hostnames, excerpts, and available page-age metadata. Agent run history stores the selected source evidence alongside the output so results can be reviewed later. Retrieved page text is untrusted external data; it is passed to the model as reference context, not as system instructions.
+
+**External dependency:** a valid Brave Search API key and active API entitlement are required for live searches. CI uses mocked HTTP responses and does not consume paid API requests. Respect the provider's quotas and rate limits. Search results are evidence to evaluate, not a guarantee that every source is accurate or authoritative.

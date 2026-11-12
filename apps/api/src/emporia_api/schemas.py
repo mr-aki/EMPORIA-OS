@@ -99,6 +99,30 @@ class AgentRunCreate(BaseModel):
     task: str = Field(min_length=1, max_length=12000)
     max_tokens: int = Field(default=1800, ge=1, le=4096)
     temperature: float | None = Field(default=0.2, ge=0, le=2)
+    web_research: bool = False
+    research_query: str | None = Field(default=None, min_length=1, max_length=600)
+
+    @model_validator(mode="after")
+    def require_explicit_research_query(self):
+        if self.web_research and not self.research_query:
+            raise ValueError(
+                "research_query is required when web_research is enabled; "
+                "the task text is never sent to external search automatically"
+            )
+        if self.web_research and len(self.task) > 7000:
+            raise ValueError(
+                "task must be at most 7000 characters when web research is enabled"
+            )
+        return self
+
+
+class ResearchSourceRead(BaseModel):
+    index: int
+    url: str
+    title: str
+    hostname: str
+    snippets: list[str]
+    age: list[str]
 
 
 class AgentRunRead(BaseModel):
@@ -115,7 +139,20 @@ class AgentRunRead(BaseModel):
     completion_tokens: int
     total_tokens: int
     provider_request_id: str | None
+    research_sources: list[ResearchSourceRead] = Field(default_factory=list)
     created_at: datetime
     completed_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ResearchQuery(BaseModel):
+    query: str = Field(min_length=1, max_length=600)
+    maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
+
+
+
+class ResearchRead(BaseModel):
+    query: str
+    sources: list[ResearchSourceRead]
+    request_id: str | None = None
