@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_health_is_public(client):
     response = client.get("/health/live")
     assert response.status_code == 200
@@ -106,8 +109,14 @@ def test_agent_catalog_requires_auth_and_hides_internal_prompts(client, auth_hea
         "commerce-strategist",
         "product-research-analyst",
         "growth-marketing-planner",
+        "pricing-unit-economics-analyst",
+        "supplier-sourcing-analyst",
+        "customer-voice-analyst",
+        "marketplace-listing-optimizer",
+        "retention-lifecycle-specialist",
     }
     assert all(item["tools_enabled"] is False for item in agents)
+    assert all(item["category"] and item["deliverables"] and item["required_context"] for item in agents)
     assert all("system_prompt" not in item for item in agents)
 
 
@@ -315,3 +324,54 @@ def test_agent_research_bounds_task_size_before_external_call(client, auth_heade
         },
     )
     assert response.status_code == 422
+
+
+
+@pytest.mark.parametrize(
+    ("agent_id", "prompt_fragment"),
+    [
+        ("pricing-unit-economics-analyst", "Pricing & Unit Economics Analyst"),
+        ("supplier-sourcing-analyst", "Supplier Sourcing & Procurement Analyst"),
+        ("customer-voice-analyst", "Customer Voice & Review Intelligence Analyst"),
+        ("marketplace-listing-optimizer", "Marketplace Listing & Merchandising Specialist"),
+        ("retention-lifecycle-specialist", "Retention & Customer Lifecycle Specialist"),
+    ],
+)
+def test_additional_specialists_execute_through_agent_runtime(
+    client, auth_headers, monkeypatch, agent_id, prompt_fragment
+):
+    from emporia_api.providers import ProviderReply
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            assert request.messages[0].role == "system"
+            assert prompt_fragment in request.messages[0].content
+            assert request.messages[1].content == "Prepare an evidence-led operating plan."
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content=f"{agent_id} completed a test run.",
+                prompt_tokens=80,
+                completion_tokens=30,
+                total_tokens=110,
+                request_id=f"req_{agent_id}",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    response = client.post(
+        f"/api/v1/agents/{agent_id}/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Prepare an evidence-led operating plan.",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "completed"
+    assert response.json()["agent_id"] == agent_id
+    assert response.json()["total_tokens"] == 110
