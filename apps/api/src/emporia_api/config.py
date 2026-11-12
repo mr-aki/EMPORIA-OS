@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     worker_backoff_max_seconds: int = Field(default=300, ge=1, le=3600)
     job_submissions_per_minute: int = Field(default=20, ge=1, le=600)
     research_reports_per_minute: int = Field(default=5, ge=1, le=120)
+    shopify_api_version: str = Field(default="2026-10", pattern=r"^\d{4}-\d{2}$")
     login_attempts_per_email_window: int = Field(default=5, ge=1, le=100)
     login_attempts_per_ip_window: int = Field(default=30, ge=1, le=1000)
     login_rate_limit_window_seconds: int = Field(default=60, ge=10, le=3600)
@@ -38,6 +39,10 @@ class Settings(BaseSettings):
     brave_search_api_key: SecretStr | None = None
     openai_compatible_base_url: str | None = None
     openai_compatible_api_key: SecretStr | None = None
+    shopify_client_id: str | None = None
+    shopify_client_secret: SecretStr | None = None
+    shopify_redirect_uri: str | None = None
+    shopify_encryption_key: SecretStr | None = None
 
     model_config = SettingsConfigDict(env_prefix="EMPORIA_", env_file=".env", extra="ignore")
 
