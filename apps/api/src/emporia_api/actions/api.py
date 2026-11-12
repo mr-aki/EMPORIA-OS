@@ -20,8 +20,8 @@ from emporia_api.models import (
     BusinessActionRequest,
     User,
     WorkspaceMembership,
+    utcnow,
 )
-from emporia_api.models import utcnow
 from emporia_api.schemas import (
     ActionDecisionRequest,
     ActionDefinitionRead,
