@@ -101,6 +101,8 @@ All settings use the EMPORIA_ prefix.
 | EMPORIA_OPENAI_COMPATIBLE_BASE_URL | Operator-configured OpenAI-compatible model endpoint |
 | EMPORIA_OPENAI_COMPATIBLE_API_KEY | Optional server-side key for that endpoint |
 | EMPORIA_BRAVE_SEARCH_API_KEY | Optional Brave Search LLM Context API key |
+| EMPORIA_AGENT_MAX_OUTPUT_TOKENS | Server-side per-agent response ceiling; defaults to 2048 and must be 1–4096 |
+| EMPORIA_SKILL_MAX_OUTPUT_TOKENS | Server-side per-skill response ceiling; defaults to 2048 and must be 1–4096 |
 
 ### Migrating an earlier single-workspace database
 
@@ -190,7 +192,9 @@ Endpoints:
 - GET /api/v1/agent-runs lists persisted runs for the current workspace.
 - GET /api/v1/agent-runs/{run_id} retrieves one run.
 
-The specialist metadata contract also includes category, expected deliverables, and required context; private system prompts are never returned. A run records its task, output, status, provider/model, token usage, request ID, timestamps, and selected research sources. Start, completion, and failure events are audited. Unexpected provider and research exceptions also finalize the persisted run as failed without exposing internal exception details to API clients.
+The specialist metadata contract also includes category, expected deliverables, and required context; private system prompts are never returned. The server enforces EMPORIA_AGENT_MAX_OUTPUT_TOKENS (default 2048; allowed 1–4096) before creating a run or calling a provider. This is a per-run output bound, not a monthly budget or rate/concurrency limiter.
+
+A run records its task, output, status, provider/model, token usage, request ID, timestamps, and selected research sources. Start, completion, and failure events are audited. Unexpected provider and research exceptions also finalize the persisted run as failed without exposing internal exception details to API clients.
 
 **Safety boundary:** these agents are advisory text agents. They do not have browser, shell, store-admin, payment, or other action tools. They cannot autonomously change a live business.
 
@@ -215,3 +219,36 @@ pytest -q
 ~~~
 
 The test suite covers API contracts, authentication/authorization, workspace isolation, provider adapters, research privacy boundaries, and fresh/legacy database migrations. Provider HTTP tests use mocks; run a separately controlled integration test with operator credentials before relying on a live provider deployment.
+
+## Skill catalog and execution
+
+The first commerce skill pack contains 15 versioned advisory procedures. Skills are not
+permission grants: the runtime does not browse supplied URLs, call store APIs, send supplier
+messages, change prices, place orders, or launch campaigns.
+
+Authenticated endpoints:
+- GET /api/v1/skills — list metadata and input contracts.
+- GET /api/v1/skills?domain=sourcing — filter by domain.
+- GET /api/v1/skills/{skill_id} — inspect a skill contract.
+- POST /api/v1/skills/{skill_id}/runs — execute through a configured AI provider.
+- GET /api/v1/skill-runs and GET /api/v1/skill-runs/{run_id} — review run history.
+
+Example request body:
+
+    {
+      "provider": "openai",
+      "model": "gpt-5",
+      "inputs": {
+        "market": "Reusable home storage",
+        "geography": "United Kingdom",
+        "target_customer": "Renters in small urban apartments"
+      },
+      "max_tokens": 1800
+    }
+
+Each skill rejects unknown inputs and validates required fields and types before calling a
+provider. The server enforces `EMPORIA_SKILL_MAX_OUTPUT_TOKENS` (default 2048, allowed range
+1–4096) before persisting a run or calling the provider. Runs persist skill version, input data, result, provider usage, status, and
+timestamps. Start/completion/failure events are written to the audit log; history is
+workspace-scoped. Input values are untrusted data and cannot grant permissions or override
+the skill procedure. See ../../skills/README.md for the catalog and governance boundaries.
