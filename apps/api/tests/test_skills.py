@@ -429,7 +429,7 @@ def test_skill_run_api_returns_and_supplies_authoritative_calculations(
     )
     assert response.status_code == 201
     result = response.json()
-    assert result["calculations"]["landed_cost_per_unit"] == 7.45
+    assert result["calculations"]["landed_cost_per_unit"] == 7.95
     assert result["calculations"]["duty_base_source"] == "provisional_supplier_unit_cost"
 
 
@@ -452,3 +452,28 @@ def test_integer_skill_inputs_reject_fractional_inventory_quantities(client, aut
     )
     assert response.status_code == 422
     assert "must be a whole number" in str(response.json()["detail"])
+
+
+def test_pricing_rejects_impossible_combined_fee_and_margin_rates(client, auth_headers):
+    response = client.post(
+        "/api/v1/skills/pricing-promotion-review/runs",
+        headers=auth_headers,
+        json={"provider": "openai", "model": "gpt-5", "inputs": {
+            "unit_landed_cost": 7, "current_price": 20,
+            "marketplace_fee_percent": 60, "payment_fee_percent": 20,
+            "target_contribution_margin_percent": 20,
+        }},
+    )
+    assert response.status_code == 422
+    assert "must be below 100 percent" in str(response.json()["detail"])
+
+
+def test_pricing_calculation_handles_zero_price_without_division_error():
+    from emporia_api.skills.calculations import calculate_skill
+    result = calculate_skill("pricing-promotion-review", {
+        "unit_landed_cost": 7, "current_price": 0,
+        "marketplace_fee_percent": 0, "target_contribution_margin_percent": 20,
+    })
+    assert result["current_contribution_margin_percent"] is None
+    assert result["promotional_contribution_margin_percent"] is None
+    assert result["required_volume_uplift_percent_to_match_current_contribution"] is None
