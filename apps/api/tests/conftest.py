@@ -28,7 +28,7 @@ def auth_headers(client):
     response = client.post(
         "/api/v1/auth/register",
         json={
-            "email": "test@example.local",
+            "email": "test@example.com",
             "password": "VeryStrongTestPassword!2026",
             "display_name": "Test User",
             "workspace_name": "Test Workspace",
