@@ -103,6 +103,7 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "users" in inspector.get_table_names()
         assert "workspaces" in inspector.get_table_names()
         assert "workspace_memberships" in inspector.get_table_names()
+        assert "business_action_requests" in inspector.get_table_names()
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
         }
