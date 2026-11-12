@@ -16,29 +16,15 @@ class ConcurrentExecutionLimitExceeded(Exception):
         super().__init__("Workspace concurrent execution limit reached")
 
 
-def reserve_execution_slot(
+def recover_expired_execution_leases(
     session: Session,
     run_model: type[AgentRun] | type[SkillRun],
     workspace_id: str,
-    limit: int,
-    lease_seconds: int,
     *,
     now: datetime | None = None,
-) -> datetime:
-    """Reserve one active execution slot under a workspace-scoped DB lock.
-
-    Updating the parent workspace row serializes reservations across API workers
-    sharing PostgreSQL or SQLite. Expired running rows are finalized as failed
-    and charged their full requested output reservation before capacity is
-    recalculated. The caller must commit the new run in this same transaction.
-    """
+) -> int:
+    """Finalize abandoned runs once their persisted execution lease has expired."""
     current = (now or datetime.now(UTC)).astimezone(UTC)
-    session.execute(
-        update(Workspace)
-        .where(Workspace.id == workspace_id)
-        .values(name=Workspace.name)
-    )
-
     expired_result = session.execute(
         update(run_model)
         .where(
@@ -56,29 +42,53 @@ def reserve_execution_slot(
         .returning(run_model.id)
     )
     expired_ids = expired_result.scalars().all()
-    if expired_ids:
-        execution_type = "agent" if run_model is AgentRun else "skill"
-        resource_type = "agent_run" if run_model is AgentRun else "skill_run"
-        session.add_all(
-            AuditEvent(
-                workspace_id=workspace_id,
-                actor="system",
-                action=f"{execution_type}.run.failed",
-                resource_type=resource_type,
-                resource_id=run_id,
-                detail="execution_lease_expired",
-                created_at=current,
-            )
-            for run_id in expired_ids
+    if not expired_ids:
+        return 0
+
+    execution_type = "agent" if run_model is AgentRun else "skill"
+    resource_type = "agent_run" if run_model is AgentRun else "skill_run"
+    session.add_all(
+        AuditEvent(
+            workspace_id=workspace_id,
+            actor="system",
+            action=f"{execution_type}.run.failed",
+            resource_type=resource_type,
+            resource_id=run_id,
+            detail="execution_lease_expired",
+            created_at=current,
         )
-        # Persist stale-run recovery, then reacquire the workspace lock before
-        # counting and reserving capacity so concurrent workers remain ordered.
-        session.commit()
-        session.execute(
-            update(Workspace)
-            .where(Workspace.id == workspace_id)
-            .values(name=Workspace.name)
-        )
+        for run_id in expired_ids
+    )
+    # Make recovery durable before an idempotent retry can read the old run.
+    session.commit()
+    return len(expired_ids)
+
+
+def reserve_execution_slot(
+    session: Session,
+    run_model: type[AgentRun] | type[SkillRun],
+    workspace_id: str,
+    limit: int,
+    lease_seconds: int,
+    *,
+    now: datetime | None = None,
+) -> datetime:
+    """Reserve one active execution slot under a workspace-scoped DB lock.
+
+    Updating the parent workspace row serializes reservations across API workers
+    sharing PostgreSQL or SQLite. Expired running rows are finalized as failed
+    and charged their full requested output reservation before capacity is
+    recalculated. The caller must commit the new run in this same transaction.
+    """
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    recover_expired_execution_leases(
+        session, run_model, workspace_id, now=current
+    )
+    session.execute(
+        update(Workspace)
+        .where(Workspace.id == workspace_id)
+        .values(name=Workspace.name)
+    )
 
     active = session.scalar(
         select(func.count(run_model.id)).where(
