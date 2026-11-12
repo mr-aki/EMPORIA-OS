@@ -63,6 +63,42 @@ class WorkspaceMembership(Base):
     role: Mapped[str] = mapped_column(String(20), default="viewer", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
+class Product(Base):
+    """Workspace-owned product catalog record with normalized SKU and money fields."""
+
+    __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "sku", name="uq_products_workspace_sku"),
+        Index(
+            "ix_products_workspace_status_created_at",
+            "workspace_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    sku: Mapped[str] = mapped_column(String(80), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", server_default="", nullable=False)
+    vendor: Mapped[str] = mapped_column(String(160), default="", server_default="", nullable=False)
+    product_type: Mapped[str] = mapped_column(String(120), default="", server_default="", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="draft", server_default="draft", nullable=False
+    )
+    price_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    cost_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
 class Venture(Base):
     __tablename__ = "ventures"
 
