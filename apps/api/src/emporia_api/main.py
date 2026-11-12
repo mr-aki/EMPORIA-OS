@@ -3,7 +3,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,7 @@ from emporia_api.idempotency import (
 from emporia_api.models import (
     AgentRun,
     AuditEvent,
+    BackgroundJob,
     SkillRun,
     User,
     Venture,
@@ -57,6 +58,7 @@ from emporia_api.output_budgets import (
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
 from emporia_api.schemas import (
+    AgentJobCreate,
     AgentRead,
     AgentRunCreate,
     AgentRunRead,
@@ -69,11 +71,14 @@ from emporia_api.schemas import (
     FXConvertRead,
     FXConvertRequest,
     FXRateRead,
+    JobRead,
+    JobSubmission,
     LoginRequest,
     ProviderRead,
     RegisterRequest,
     ResearchQuery,
     ResearchRead,
+    SkillJobCreate,
     SkillRead,
     SkillRunCreate,
     SkillRunRead,
@@ -1199,3 +1204,207 @@ async def convert_reference_fx(
         date=result.rate.date,
     )
 
+
+
+
+@app.post(
+    "/api/v1/jobs",
+    response_model=JobRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["jobs"],
+)
+def enqueue_background_job(
+    payload: JobSubmission,
+    response: Response,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Enqueue a registered advisory agent or skill for a separate worker."""
+    require_write_access(actor)
+    if actor.auth_type != "jwt":
+        raise HTTPException(
+            status_code=403,
+            detail="Durable jobs require a registered JWT user account",
+        )
+
+    if isinstance(payload, AgentJobCreate):
+        definition = get_agent(payload.agent_id)
+        if definition is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        kind = "agent"
+        target_id = definition.id
+        request_payload = payload.payload.model_dump(mode="json")
+        provider = payload.payload.provider
+    elif isinstance(payload, SkillJobCreate):
+        definition = get_skill(payload.skill_id)
+        if definition is None:
+            raise HTTPException(status_code=404, detail="Skill not found")
+        errors = validate_skill_inputs(definition, payload.payload.inputs)
+        if errors:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "Skill inputs are invalid", "errors": errors},
+            )
+        kind = "skill"
+        target_id = definition.id
+        request_payload = payload.payload.model_dump(mode="json")
+        provider = payload.payload.provider
+    else:
+        raise HTTPException(status_code=422, detail="Unsupported job kind")
+
+    token_limit = (
+        settings.agent_max_output_tokens if kind == "agent"
+        else settings.skill_max_output_tokens
+    )
+    if request_payload["max_tokens"] > token_limit:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Requested max_tokens exceeds the server {kind} output limit of {token_limit}",
+        )
+    if not provider_gateway.configured(provider):
+        raise HTTPException(
+            status_code=503,
+            detail=f"{provider} is not configured on this server",
+        )
+
+    def resolve_existing(existing: BackgroundJob) -> BackgroundJob:
+        same_request = (
+            existing.actor == actor.user_id
+            and existing.kind == kind
+            and existing.target_id == target_id
+            and existing.payload == request_payload
+            and existing.max_attempts == payload.max_attempts
+        )
+        if not same_request:
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency key was already used with a different job payload",
+            )
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotency-Replayed"] = "true"
+        return existing
+
+    if payload.idempotency_key:
+        existing = session.scalar(
+            select(BackgroundJob).where(
+                BackgroundJob.workspace_id == actor.workspace_id,
+                BackgroundJob.idempotency_key == payload.idempotency_key,
+            )
+        )
+        if existing is not None:
+            return resolve_existing(existing)
+
+    job = BackgroundJob(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        kind=kind,
+        target_id=target_id,
+        payload_json=json.dumps(
+            request_payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        ),
+        status="queued",
+        max_attempts=payload.max_attempts,
+        idempotency_key=payload.idempotency_key,
+    )
+    session.add(job)
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        if payload.idempotency_key:
+            existing = session.scalar(
+                select(BackgroundJob).where(
+                    BackgroundJob.workspace_id == actor.workspace_id,
+                    BackgroundJob.idempotency_key == payload.idempotency_key,
+                )
+            )
+            if existing is not None:
+                return resolve_existing(existing)
+        raise
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="job.queued",
+        resource_type="background_job",
+        resource_id=job.id,
+        detail=f"{kind}:{target_id}",
+    ))
+    session.commit()
+    session.refresh(job)
+    return job
+
+
+@app.get("/api/v1/jobs", response_model=list[JobRead], tags=["jobs"])
+def list_background_jobs(
+    session: SessionDep,
+    actor: AuthDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+):
+    return list(session.scalars(
+        select(BackgroundJob)
+        .where(BackgroundJob.workspace_id == actor.workspace_id)
+        .order_by(BackgroundJob.created_at.desc())
+        .limit(limit)
+    ))
+
+
+@app.get("/api/v1/jobs/{job_id}", response_model=JobRead, tags=["jobs"])
+def get_background_job(job_id: str, session: SessionDep, actor: AuthDep):
+    job = session.scalar(select(BackgroundJob).where(
+        BackgroundJob.id == job_id,
+        BackgroundJob.workspace_id == actor.workspace_id,
+    ))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@app.post("/api/v1/jobs/{job_id}/cancel", response_model=JobRead, tags=["jobs"])
+def cancel_background_job(job_id: str, session: SessionDep, actor: AuthDep):
+    """Cancel a queued job; already-running provider requests are not interrupted."""
+    require_write_access(actor)
+    now = utcnow()
+    result = session.execute(
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == job_id,
+            BackgroundJob.workspace_id == actor.workspace_id,
+            BackgroundJob.status.in_(("queued", "retry_wait")),
+        )
+        .values(
+            status="cancelled",
+            completed_at=now,
+            updated_at=now,
+            locked_at=None,
+            locked_by=None,
+        )
+    )
+    if result.rowcount == 0:
+        job = session.scalar(select(BackgroundJob).where(
+            BackgroundJob.id == job_id,
+            BackgroundJob.workspace_id == actor.workspace_id,
+        ))
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job cannot be cancelled while status is {job.status}",
+        )
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="job.cancelled",
+        resource_type="background_job",
+        resource_id=job_id,
+        detail="cancelled_before_claim",
+    ))
+    session.commit()
+    return session.scalar(select(BackgroundJob).where(
+        BackgroundJob.id == job_id,
+        BackgroundJob.workspace_id == actor.workspace_id,
+    ))
