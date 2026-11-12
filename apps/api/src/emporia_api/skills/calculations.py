@@ -160,6 +160,107 @@ def _pricing_promotion(inputs: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def _contribution_margin_waterfall(inputs: dict[str, Any]) -> dict[str, Any]:
+    gross = _d(inputs["gross_sales"])
+    discounts = _d(inputs["discounts"])
+    refunds = _d(inputs["refunds"])
+    cogs = _d(inputs["cost_of_goods_sold"])
+    fulfilment = _d(inputs["fulfilment_costs"])
+    channel_fees = _d(inputs["channel_fees"])
+    advertising = _d(inputs.get("advertising_spend", 0))
+    other_variable = _d(inputs.get("other_variable_costs", 0))
+    net_sales = gross - discounts - refunds
+    gross_profit = net_sales - cogs
+    contribution_before_ads = gross_profit - fulfilment - channel_fees - other_variable
+    contribution_after_ads = contribution_before_ads - advertising
+    margin_before_ads = (
+        contribution_before_ads / net_sales * Decimal(100)
+        if net_sales > 0 else None
+    )
+    margin_after_ads = (
+        contribution_after_ads / net_sales * Decimal(100)
+        if net_sales > 0 else None
+    )
+    warnings: list[str] = []
+    if discounts + refunds > gross:
+        warnings.append("Discounts and refunds exceed gross sales; verify period and recognition basis.")
+    if net_sales <= 0:
+        warnings.append("Net sales are zero or negative; margin percentages are not meaningful.")
+    return {
+        "calculation_type": "contribution-margin-waterfall",
+        "currency": str(inputs["currency"]).upper(),
+        "gross_sales": _rounded(gross),
+        "discounts": _rounded(discounts),
+        "refunds": _rounded(refunds),
+        "net_sales": _rounded(net_sales),
+        "cost_of_goods_sold": _rounded(cogs),
+        "gross_profit": _rounded(gross_profit),
+        "fulfilment_costs": _rounded(fulfilment),
+        "channel_fees": _rounded(channel_fees),
+        "other_variable_costs": _rounded(other_variable),
+        "contribution_before_advertising": _rounded(contribution_before_ads),
+        "advertising_spend": _rounded(advertising),
+        "contribution_after_advertising": _rounded(contribution_after_ads),
+        "contribution_margin_before_advertising_percent": _rounded(margin_before_ads),
+        "contribution_margin_after_advertising_percent": _rounded(margin_after_ads),
+        "warnings": warnings,
+        "formula": "net_sales = gross_sales - discounts - refunds; contribution_after_ads = net_sales - COGS - fulfilment - channel_fees - other_variable_costs - advertising_spend",
+    }
+
+
+def _customer_acquisition_cost(inputs: dict[str, Any]) -> dict[str, Any]:
+    media = _d(inputs["media_spend"])
+    agency = _d(inputs["agency_fees"])
+    creative = _d(inputs["creative_cost"])
+    tools = _d(inputs["measurement_tool_cost"])
+    other = _d(inputs.get("other_acquisition_costs", 0))
+    customers = _d(inputs["new_customers"])
+    total = media + agency + creative + tools + other
+    fully_loaded_cac = total / customers
+    media_cac = media / customers
+    return {
+        "calculation_type": "customer-acquisition-cost",
+        "currency": str(inputs["currency"]).upper(),
+        "new_customers": int(customers),
+        "media_spend": _rounded(media),
+        "allocated_non_media_costs": _rounded(agency + creative + tools + other),
+        "total_acquisition_cost": _rounded(total),
+        "media_only_cac": _rounded(media_cac),
+        "fully_loaded_cac": _rounded(fully_loaded_cac),
+        "included_costs": ["Media", "Agency", "Creative", "Measurement tools", "Other supplied acquisition costs"],
+        "formula": "fully_loaded_CAC = (media + agency + creative + measurement_tools + other_acquisition_costs) / new_customers",
+        "warning": "CAC is comparable only when cohort, attribution, new-customer definition, and cost allocation basis match.",
+    }
+
+
+def _cohort_ltv(inputs: dict[str, Any]) -> dict[str, Any]:
+    arpu = _d(inputs["monthly_arpu"])
+    gross_margin = _d(inputs["gross_margin_percent"]) / Decimal(100)
+    churn = _d(inputs["monthly_churn_percent"]) / Decimal(100)
+    discount = _d(inputs.get("monthly_discount_rate_percent", 0)) / Decimal(100)
+    decay = churn + discount
+    monthly_contribution = arpu * gross_margin
+    ltv = monthly_contribution / decay if decay > 0 else None
+    warnings: list[str] = []
+    if decay == 0:
+        warnings.append("No churn or discount rate was supplied; finite contribution LTV cannot be estimated.")
+    return {
+        "calculation_type": "cohort-contribution-ltv",
+        "currency": str(inputs["currency"]).upper(),
+        "monthly_arpu": _rounded(arpu),
+        "gross_margin_percent": _rounded(gross_margin * 100),
+        "monthly_churn_percent": _rounded(churn * 100),
+        "monthly_discount_rate_percent": _rounded(discount * 100),
+        "monthly_contribution_per_customer": _rounded(monthly_contribution),
+        "effective_monthly_decay_percent": _rounded(decay * 100),
+        "estimated_contribution_ltv": _rounded(ltv),
+        "warnings": warnings,
+        "formula": "contribution_LTV = monthly_ARPU * gross_margin_rate / (monthly_churn_rate + monthly_discount_rate)",
+        "model_assumption": "Steady-state geometric approximation with constant monthly ARPU, margin, churn, and discount rate.",
+        "exclusions": ["Acquisition cost", "Servicing and support cost", "Refunds and returns not reflected in margin", "Expansion and contraction effects"],
+    }
+
 def calculate_skill(skill_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Return verified calculation context for the skills with deterministic models."""
     try:
@@ -169,6 +270,12 @@ def calculate_skill(skill_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return _inventory_reorder(inputs)
         if skill_id == "pricing-promotion-review":
             return _pricing_promotion(inputs)
+        if skill_id == "contribution-margin-waterfall":
+            return _contribution_margin_waterfall(inputs)
+        if skill_id == "customer-acquisition-cost-review":
+            return _customer_acquisition_cost(inputs)
+        if skill_id == "cohort-ltv-estimator":
+            return _cohort_ltv(inputs)
     except (ArithmeticError, InvalidOperation, KeyError, TypeError, ValueError):
         # Historical records may have pre-contract or malformed input; never break read APIs.
         return {}
