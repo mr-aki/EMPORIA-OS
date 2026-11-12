@@ -78,6 +78,8 @@ from emporia_api.schemas import (
     VentureUpdate,
     WorkspaceCreate,
     WorkspaceCreated,
+    WorkspaceMemberCreate,
+    WorkspaceMemberRead,
     WorkspaceSummary,
 )
 from emporia_api.skills.calculations import calculate_skill
@@ -1300,4 +1302,87 @@ def execute_approved_business_action(
             },
         )
     raise HTTPException(status_code=503, detail="Action executor unavailable")
+
+
+
+@app.get(
+    "/api/v1/workspaces/members",
+    response_model=list[WorkspaceMemberRead],
+    tags=["workspaces"],
+)
+def list_workspace_members(session: SessionDep, actor: AuthDep):
+    """List active-workspace members; all roles may inspect their team."""
+    rows = session.execute(
+        select(User, WorkspaceMembership)
+        .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
+        .where(
+            WorkspaceMembership.workspace_id == actor.workspace_id,
+            User.is_active.is_(True),
+        )
+        .order_by(WorkspaceMembership.created_at.asc())
+    ).all()
+    return [
+        WorkspaceMemberRead(
+            user_id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            role=membership.role,
+            created_at=membership.created_at,
+        )
+        for user, membership in rows
+    ]
+
+
+@app.post(
+    "/api/v1/workspaces/members",
+    response_model=WorkspaceMemberRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["workspaces"],
+)
+def add_workspace_member(
+    payload: WorkspaceMemberCreate,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Add an existing active account. Only the workspace owner may grant roles."""
+    if actor.role != "owner":
+        raise HTTPException(status_code=403, detail="Only the workspace owner may add members")
+    user = session.scalar(
+        select(User).where(User.email == str(payload.email).lower(), User.is_active.is_(True))
+    )
+    if user is None:
+        raise HTTPException(status_code=404, detail="An active account with that email was not found")
+    existing = session.scalar(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.workspace_id == actor.workspace_id,
+            WorkspaceMembership.user_id == user.id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="This user is already a workspace member")
+
+    membership = WorkspaceMembership(
+        workspace_id=actor.workspace_id,
+        user_id=user.id,
+        role=payload.role,
+    )
+    session.add(membership)
+    session.flush()
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="workspace.member_added",
+        resource_type="workspace_membership",
+        resource_id=membership.id,
+        detail=f"{user.id}:{payload.role}",
+    ))
+    session.commit()
+    session.refresh(membership)
+    return WorkspaceMemberRead(
+        user_id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=membership.role,
+        created_at=membership.created_at,
+    )
 
