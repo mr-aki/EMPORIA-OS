@@ -77,7 +77,7 @@ def create_venture(payload: VentureCreate, session: SessionDep, actor: AuthDep):
     session.add(venture)
     session.flush()
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id, actor=actor.user_id, action="venture.created",
+        workspace_id=actor.workspace_id, actor=actor.user_id, action="venture.created",
         resource_type="venture", resource_id=venture.id, detail=venture.name,
     ))
     session.commit()
@@ -100,7 +100,7 @@ def list_ventures(
 @app.get("/api/v1/ventures/{venture_id}", response_model=VentureRead, tags=["ventures"])
 def get_venture(venture_id: str, session: SessionDep, actor: AuthDep):
     venture = session.scalar(select(Venture).where(
-        Venture.id == venture_id, Venture.workspace_id == settings.workspace_id
+        Venture.id == venture_id, Venture.workspace_id == actor.workspace_id
     ))
     if venture is None:
         raise HTTPException(status_code=404, detail="Venture not found")
@@ -111,7 +111,7 @@ def get_venture(venture_id: str, session: SessionDep, actor: AuthDep):
 def update_venture(venture_id: str, payload: VentureUpdate, session: SessionDep, actor: AuthDep):
     require_write_access(actor)
     venture = session.scalar(select(Venture).where(
-        Venture.id == venture_id, Venture.workspace_id == settings.workspace_id
+        Venture.id == venture_id, Venture.workspace_id == actor.workspace_id
     ))
     if venture is None:
         raise HTTPException(status_code=404, detail="Venture not found")
@@ -119,7 +119,7 @@ def update_venture(venture_id: str, payload: VentureUpdate, session: SessionDep,
     for key, value in changes.items():
         setattr(venture, key, value)
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id, actor=actor, action="venture.updated",
+        workspace_id=actor.workspace_id, actor=actor.user_id, action="venture.updated",
         resource_type="venture", resource_id=venture.id, detail=",".join(sorted(changes)),
     ))
     session.commit()
@@ -131,12 +131,12 @@ def update_venture(venture_id: str, payload: VentureUpdate, session: SessionDep,
 def delete_venture(venture_id: str, session: SessionDep, actor: AuthDep):
     require_write_access(actor)
     venture = session.scalar(select(Venture).where(
-        Venture.id == venture_id, Venture.workspace_id == settings.workspace_id
+        Venture.id == venture_id, Venture.workspace_id == actor.workspace_id
     ))
     if venture is None:
         raise HTTPException(status_code=404, detail="Venture not found")
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id, actor=actor, action="venture.deleted",
+        workspace_id=actor.workspace_id, actor=actor.user_id, action="venture.deleted",
         resource_type="venture", resource_id=venture.id, detail=venture.name,
     ))
     session.delete(venture)
@@ -150,7 +150,7 @@ def list_audit_events(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     return list(session.scalars(
-        select(AuditEvent).where(AuditEvent.workspace_id == settings.workspace_id)
+        select(AuditEvent).where(AuditEvent.workspace_id == actor.workspace_id)
         .order_by(AuditEvent.created_at.desc()).limit(limit)
     ))
 
@@ -187,8 +187,8 @@ async def complete_ai_chat(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id,
-        actor=actor,
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
         action="ai.chat.completed",
         resource_type="ai_provider",
         resource_id=payload.provider,
@@ -237,7 +237,7 @@ async def execute_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     run = AgentRun(
-        workspace_id=settings.workspace_id,
+        workspace_id=actor.workspace_id,
         agent_id=agent.id,
         agent_version=agent.version,
         provider=payload.provider,
@@ -248,8 +248,8 @@ async def execute_agent(
     session.add(run)
     session.flush()
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id,
-        actor=actor,
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
         action="agent.run.started",
         resource_type="agent_run",
         resource_id=run.id,
@@ -263,8 +263,8 @@ async def execute_agent(
         run.error_message = f"{payload.provider} is not configured on this server"
         run.completed_at = utcnow()
         session.add(AuditEvent(
-            workspace_id=settings.workspace_id,
-            actor=actor,
+            workspace_id=actor.workspace_id,
+            actor=actor.user_id,
             action="agent.run.failed",
             resource_type="agent_run",
             resource_id=run.id,
@@ -293,8 +293,8 @@ async def execute_agent(
             run.error_message = str(exc)
             run.completed_at = utcnow()
             session.add(AuditEvent(
-                workspace_id=settings.workspace_id,
-                actor=actor,
+                workspace_id=actor.workspace_id,
+                actor=actor.user_id,
                 action="agent.run.failed",
                 resource_type="agent_run",
                 resource_id=run.id,
@@ -307,8 +307,8 @@ async def execute_agent(
             run.error_message = str(exc)
             run.completed_at = utcnow()
             session.add(AuditEvent(
-                workspace_id=settings.workspace_id,
-                actor=actor,
+                workspace_id=actor.workspace_id,
+                actor=actor.user_id,
                 action="agent.run.failed",
                 resource_type="agent_run",
                 resource_id=run.id,
@@ -365,8 +365,8 @@ async def execute_agent(
         run.error_message = str(exc)
         run.completed_at = utcnow()
         session.add(AuditEvent(
-            workspace_id=settings.workspace_id,
-            actor=actor,
+            workspace_id=actor.workspace_id,
+            actor=actor.user_id,
             action="agent.run.failed",
             resource_type="agent_run",
             resource_id=run.id,
@@ -379,8 +379,8 @@ async def execute_agent(
         run.error_message = str(exc)
         run.completed_at = utcnow()
         session.add(AuditEvent(
-            workspace_id=settings.workspace_id,
-            actor=actor,
+            workspace_id=actor.workspace_id,
+            actor=actor.user_id,
             action="agent.run.failed",
             resource_type="agent_run",
             resource_id=run.id,
@@ -397,8 +397,8 @@ async def execute_agent(
     run.provider_request_id = reply.request_id
     run.completed_at = utcnow()
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id,
-        actor=actor,
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
         action="agent.run.completed",
         resource_type="agent_run",
         resource_id=run.id,
@@ -417,7 +417,7 @@ def list_agent_runs(
 ):
     return list(session.scalars(
         select(AgentRun)
-        .where(AgentRun.workspace_id == settings.workspace_id)
+        .where(AgentRun.workspace_id == actor.workspace_id)
         .order_by(AgentRun.created_at.desc())
         .limit(limit)
     ))
@@ -427,7 +427,7 @@ def list_agent_runs(
 def get_agent_run(run_id: str, session: SessionDep, actor: AuthDep):
     run = session.scalar(select(AgentRun).where(
         AgentRun.id == run_id,
-        AgentRun.workspace_id == settings.workspace_id,
+        AgentRun.workspace_id == actor.workspace_id,
     ))
     if run is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
@@ -449,8 +449,8 @@ async def search_web(payload: ResearchQuery, session: SessionDep, actor: AuthDep
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id,
-        actor=actor,
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
         action="research.web_search.completed",
         resource_type="research_provider",
         resource_id="brave-search",
@@ -488,7 +488,31 @@ def register_account(payload: RegisterRequest, session: SessionDep):
     try:
         session.add(user)
         session.flush()
-        workspace = Workspace(name=payload.workspace_name.strip(), owner_user_id=user.id)
+
+        # Legacy workspace data can only be claimed by the operator-designated owner email.
+        legacy_owner = (
+            settings.legacy_workspace_owner_email
+            and str(payload.email).lower() == settings.legacy_workspace_owner_email.lower()
+            and len(settings.workspace_id) <= 36
+        )
+        has_legacy_data = False
+        if legacy_owner and session.get(Workspace, settings.workspace_id) is None:
+            has_legacy_data = any((
+                session.scalar(select(Venture.id).where(
+                    Venture.workspace_id == settings.workspace_id
+                ).limit(1)),
+                session.scalar(select(AuditEvent.id).where(
+                    AuditEvent.workspace_id == settings.workspace_id
+                ).limit(1)),
+                session.scalar(select(AgentRun.id).where(
+                    AgentRun.workspace_id == settings.workspace_id
+                ).limit(1)),
+            ))
+        workspace = Workspace(
+            id=settings.workspace_id if has_legacy_data else None,
+            name=payload.workspace_name.strip(),
+            owner_user_id=user.id,
+        )
         session.add(workspace)
         session.flush()
         session.add(WorkspaceMembership(
