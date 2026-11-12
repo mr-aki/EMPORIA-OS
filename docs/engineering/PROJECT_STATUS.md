@@ -64,9 +64,27 @@ Prefer a small end-to-end capability that is real, testable, observable, and saf
 
 ## Skills implementation slice
 
-The Skills runtime adds a versioned 15-skill commerce pack with typed input contracts,
-unknown-field rejection, bounded payload validation, authenticated provider-backed
-execution, persisted workspace-scoped run history, and start/completion/failure audit
-events. Skills execute as advisory analysis only; they do not grant store, payment,
-supplier, advertising, fulfilment, or customer-action permissions. CI, evaluations, and
-security review remain release gates.
+The Skills runtime now contains a versioned 45-skill commerce catalog across three reviewed
+implementation packs. Every skill has a typed input contract, required/unknown-field
+validation, bounded payloads, an ordered procedure, output sections, and explicit
+guardrails. Authenticated executions are persisted and scoped to the current workspace,
+with start/completion/failure audit events. All skills remain advisory; they do not grant
+store, payment, supplier, advertising, fulfilment, or customer-action permissions.
+
+Pack v1 includes opportunity, product, sourcing, marketplace, growth, pricing, and
+retention workflows. Three narrowly defined skills also return deterministic Decimal-based
+landed-cost/margin, inventory-reorder, and promotion calculations. Server-derived values
+are version-checked and supplied to the model as authoritative context.
+
+Pack v2 adds customer persona/JTBD analysis, brand positioning, portfolio and assortment
+planning, bundling, SEO/search-term audits, review mining, quality inspection planning,
+supplier continuity/quote analysis, stock aging, fulfilment economics, and promotional
+calendar planning.
+
+Pack v3 adds pricing-response and discount planning, lifecycle segmentation, subscription
+retention, support taxonomy and complaint analysis, launch readiness and market entry,
+marketplace-policy and claims evidence review, paid-media creative and campaign audits,
+lifecycle email planning, commerce content calendars, and localization. Numeric array
+item bounds are published in the API contract and validated before provider calls.
+Policy/claims skills analyze supplied materials; they do not verify live policies or
+provide legal approval. CI, evaluations, and security review remain release gates.
