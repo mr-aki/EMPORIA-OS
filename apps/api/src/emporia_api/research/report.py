@@ -1,4 +1,5 @@
 """Research orchestration and evidence consolidation."""
+# ruff: noqa: I001
 
 from __future__ import annotations
 
@@ -15,8 +16,7 @@ def canonicalize_source_url(url: str) -> str:
     """Normalize common URL variants for deduplication without changing display URLs."""
     parts = urlsplit(url)
     hostname = (parts.hostname or "").lower().rstrip(".")
-    if hostname.startswith("www."):
-        hostname = hostname[4:]
+    hostname = hostname.removeprefix("www.")
     try:
         port = parts.port
     except ValueError:
@@ -24,9 +24,11 @@ def canonicalize_source_url(url: str) -> str:
     if ":" in hostname and not hostname.startswith("["):
         hostname = f"[{hostname}]"
     netloc = hostname
-    if port and not (parts.scheme.lower() == "https" and port == 443):
-        if not (parts.scheme.lower() == "http" and port == 80):
-            netloc = f"{netloc}:{port}"
+    if port and not (
+        (parts.scheme.lower() == "https" and port == 443)
+        or (parts.scheme.lower() == "http" and port == 80)
+    ):
+        netloc = f"{netloc}:{port}"
     path = parts.path.rstrip("/") or "/"
     query_items = [
         (key, value)
