@@ -17,13 +17,13 @@ from emporia_api.auth import (
     verify_password,
 )
 from emporia_api.config import settings
+from emporia_api.database import get_session
 from emporia_api.finance.frankfurter import (
     FrankfurterClient,
     FXProviderError,
     FXProviderUnavailable,
     FXRateNotFound,
 )
-from emporia_api.database import get_session
 from emporia_api.models import (
     AgentRun,
     AuditEvent,
