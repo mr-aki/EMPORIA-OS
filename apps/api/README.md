@@ -456,3 +456,23 @@ The API includes a workspace-scoped approval workflow for allow-listed commerce 
 The allow-list currently covers product catalogue updates, inventory adjustments, campaign publication, and order refunds. Proposal inputs have strict field validation, a 16 KB payload ceiling, recursive secret-field rejection, workspace-unique idempotency, and audit events. Owner-only team onboarding can add an already registered account to the current workspace as an admin, operator, or viewer; it is not an email invitation flow.
 
 All current catalogue entries report `executor_available=false`. Approving a request does not modify any live store, inventory, campaign, order, payment method, or customer record. A future external adapter must be separately reviewed for scopes, idempotency, preconditions, budget limits, dry-run behavior, verification, observability, and compensation before it can be enabled.
+
+
+## Persisted skill output evaluation
+
+Every completed skill run stores an immutable structural evaluation snapshot in the database and exposes it on create, history, and detail responses. It reports required sections that are present with a non-empty body, missing sections, and empty sections. Old rows created before this migration use a compatibility fallback only when the exact skill version is still available.
+
+This is a structural contract check only. A passing evaluation does **not** verify factual accuracy, calculation correctness, evidence quality, or recommendation safety.
+
+## Workspace model pricing and cost estimates
+
+Workspace owners/admins can configure explicit USD rates per one million input/output tokens for each provider/model:
+
+- PUT /api/v1/usage/pricing/{provider}/{model} — create/update the rate.
+- GET /api/v1/usage/pricing — list configured rates for the current workspace.
+- DELETE /api/v1/usage/pricing/{provider}/{model} — remove a rate for future runs.
+- GET /api/v1/usage/costs — aggregate USD estimates with optional inclusive UTC start_date and end_date filters, daily/provider-model/execution-type breakdowns, and priced/unpriced run counts.
+
+Rates are snapshotted onto new agent and skill runs before the provider call. The run's stored rates and estimated USD cost are immutable after execution; changing or deleting a rate affects only future runs. Estimates use decimal arithmetic and are calculated only when both rates and both provider token counters are available. An unknown rate or missing counter remains explicitly unpriced.
+
+No model price is guessed from a model name. Operators are responsible for entering rates that match their provider contract. These are usage-based estimates, not provider invoices, accounting-grade charges, or a spend cap. General chat calls, Brave Search requests, taxes, discounts, contractual adjustments, and other external charges are not included.
