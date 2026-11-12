@@ -7,6 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from emporia_api.actions.registry import (
+    executor_available,
+    get_action,
+    list_actions,
+    validate_action_inputs,
+)
 from emporia_api.agents.registry import get_agent, list_agents
 from emporia_api.auth import (
     Principal,
@@ -27,6 +33,7 @@ from emporia_api.finance.frankfurter import (
 from emporia_api.models import (
     AgentRun,
     AuditEvent,
+    BusinessActionRequest,
     SkillRun,
     User,
     Venture,
@@ -45,6 +52,10 @@ from emporia_api.schemas import (
     AgentRead,
     AgentRunCreate,
     AgentRunRead,
+    ActionDecisionRequest,
+    ActionDefinitionRead,
+    ActionRequestCreate,
+    ActionRequestRead,
     AuditRead,
     AuthMeRead,
     AuthTokenRead,
@@ -988,4 +999,305 @@ async def convert_reference_fx(
         rate=result.rate.rate,
         date=result.rate.date,
     )
+
+
+
+def _approval_authority(actor: Principal) -> None:
+    if actor.role not in {"owner", "admin"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners and admins may approve or reject business actions",
+        )
+
+
+def _get_action_request(
+    request_id: str,
+    session: Session,
+    actor: Principal,
+) -> BusinessActionRequest:
+    request = session.scalar(
+        select(BusinessActionRequest).where(
+            BusinessActionRequest.id == request_id,
+            BusinessActionRequest.workspace_id == actor.workspace_id,
+        )
+    )
+    if request is None:
+        raise HTTPException(status_code=404, detail="Business action request not found")
+    return request
+
+
+@app.get(
+    "/api/v1/actions/catalog",
+    response_model=list[ActionDefinitionRead],
+    tags=["governance"],
+)
+def list_business_action_catalog(actor: AuthDep):
+    """List safe proposal contracts; this release has no external executors."""
+    return [definition.public_metadata() for definition in list_actions()]
+
+
+@app.post(
+    "/api/v1/actions/requests",
+    response_model=ActionRequestRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["governance"],
+)
+def create_business_action_request(
+    payload: ActionRequestCreate,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    require_write_access(actor)
+    definition = get_action(payload.action_type)
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Business action type is not allow-listed")
+    errors = validate_action_inputs(payload.action_type, payload.inputs)
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Action inputs are invalid", "errors": errors},
+        )
+
+    serialized_inputs = json.dumps(
+        payload.inputs, ensure_ascii=False, allow_nan=False, sort_keys=True
+    )
+    if payload.idempotency_key:
+        existing = session.scalar(
+            select(BusinessActionRequest).where(
+                BusinessActionRequest.workspace_id == actor.workspace_id,
+                BusinessActionRequest.idempotency_key == payload.idempotency_key,
+            )
+        )
+        if existing is not None:
+            same_request = (
+                existing.action_type == payload.action_type
+                and existing.target_ref == payload.target_ref
+                and existing.summary == payload.summary
+                and existing.inputs_json == serialized_inputs
+            )
+            if same_request:
+                return existing
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency key was already used for a different action request",
+            )
+
+    request = BusinessActionRequest(
+        workspace_id=actor.workspace_id,
+        action_type=payload.action_type,
+        target_ref=payload.target_ref,
+        summary=payload.summary,
+        inputs_json=serialized_inputs,
+        status="pending_approval",
+        requested_by=actor.user_id,
+        idempotency_key=payload.idempotency_key,
+    )
+    session.add(request)
+    session.flush()
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="business_action.requested",
+        resource_type="business_action_request",
+        resource_id=request.id,
+        detail=f"{request.action_type}:{definition.risk_level}",
+    ))
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="Duplicate action request") from exc
+    session.refresh(request)
+    return request
+
+
+@app.get(
+    "/api/v1/actions/requests",
+    response_model=list[ActionRequestRead],
+    tags=["governance"],
+)
+def list_business_action_requests(
+    session: SessionDep,
+    actor: AuthDep,
+    request_status: Annotated[
+        str | None,
+        Query(
+            alias="status",
+            pattern=r"^(pending_approval|approved|rejected|cancelled)$",
+        ),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+):
+    query = select(BusinessActionRequest).where(
+        BusinessActionRequest.workspace_id == actor.workspace_id
+    )
+    if request_status:
+        query = query.where(BusinessActionRequest.status == request_status)
+    query = query.order_by(BusinessActionRequest.requested_at.desc()).limit(limit)
+    return list(session.scalars(query))
+
+
+@app.get(
+    "/api/v1/actions/requests/{request_id}",
+    response_model=ActionRequestRead,
+    tags=["governance"],
+)
+def get_business_action_request(
+    request_id: str,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    return _get_action_request(request_id, session, actor)
+
+
+@app.post(
+    "/api/v1/actions/requests/{request_id}/approve",
+    response_model=ActionRequestRead,
+    tags=["governance"],
+)
+def approve_business_action_request(
+    request_id: str,
+    payload: ActionDecisionRequest,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    _approval_authority(actor)
+    request = _get_action_request(request_id, session, actor)
+    if request.requested_by == actor.user_id:
+        raise HTTPException(
+            status_code=409,
+            detail="The requester cannot approve their own action; ask another workspace admin",
+        )
+    if request.status != "pending_approval":
+        raise HTTPException(status_code=409, detail="Only pending requests can be approved")
+
+    request.status = "approved"
+    request.approved_by = actor.user_id
+    request.decision_note = payload.note.strip()
+    request.decided_at = utcnow()
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="business_action.approved",
+        resource_type="business_action_request",
+        resource_id=request.id,
+        detail=request.action_type,
+    ))
+    session.commit()
+    session.refresh(request)
+    return request
+
+
+@app.post(
+    "/api/v1/actions/requests/{request_id}/reject",
+    response_model=ActionRequestRead,
+    tags=["governance"],
+)
+def reject_business_action_request(
+    request_id: str,
+    payload: ActionDecisionRequest,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    _approval_authority(actor)
+    request = _get_action_request(request_id, session, actor)
+    if request.requested_by == actor.user_id:
+        raise HTTPException(
+            status_code=409,
+            detail="The requester cannot decide their own action; cancel it instead",
+        )
+    if request.status != "pending_approval":
+        raise HTTPException(status_code=409, detail="Only pending requests can be rejected")
+
+    request.status = "rejected"
+    request.rejected_by = actor.user_id
+    request.decision_note = payload.note.strip()
+    request.decided_at = utcnow()
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="business_action.rejected",
+        resource_type="business_action_request",
+        resource_id=request.id,
+        detail=request.action_type,
+    ))
+    session.commit()
+    session.refresh(request)
+    return request
+
+
+@app.post(
+    "/api/v1/actions/requests/{request_id}/cancel",
+    response_model=ActionRequestRead,
+    tags=["governance"],
+)
+def cancel_business_action_request(
+    request_id: str,
+    payload: ActionDecisionRequest,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    require_write_access(actor)
+    request = _get_action_request(request_id, session, actor)
+    is_requester = request.requested_by == actor.user_id
+    is_workspace_admin = actor.role in {"owner", "admin"}
+    if not is_requester and not is_workspace_admin:
+        raise HTTPException(status_code=403, detail="Only the requester or a workspace admin may cancel")
+    if request.status not in {"pending_approval", "approved"}:
+        raise HTTPException(status_code=409, detail="This action request can no longer be cancelled")
+
+    request.status = "cancelled"
+    request.decision_note = payload.note.strip()
+    request.cancelled_at = utcnow()
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="business_action.cancelled",
+        resource_type="business_action_request",
+        resource_id=request.id,
+        detail=request.action_type,
+    ))
+    session.commit()
+    session.refresh(request)
+    return request
+
+
+@app.post(
+    "/api/v1/actions/requests/{request_id}/execute",
+    response_model=ActionRequestRead,
+    tags=["governance"],
+)
+def execute_approved_business_action(
+    request_id: str,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Fail closed until a reviewed action adapter is registered for this action type."""
+    _approval_authority(actor)
+    request = _get_action_request(request_id, session, actor)
+    if request.status != "approved":
+        raise HTTPException(status_code=409, detail="Only approved requests may be executed")
+    if not executor_available(request.action_type):
+        reason = "No reviewed execution adapter is registered; external side effects are disabled."
+        if request.execution_block_reason != reason:
+            request.execution_block_reason = reason
+            session.add(AuditEvent(
+                workspace_id=actor.workspace_id,
+                actor=actor.user_id,
+                action="business_action.execution_blocked",
+                resource_type="business_action_request",
+                resource_id=request.id,
+                detail=request.action_type,
+            ))
+            session.commit()
+            session.refresh(request)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": reason,
+                "request_id": request.id,
+                "status": request.status,
+            },
+        )
+    raise HTTPException(status_code=503, detail="Action executor unavailable")
 
