@@ -109,6 +109,10 @@ class AgentRunCreate(BaseModel):
                 "research_query is required when web_research is enabled; "
                 "the task text is never sent to external search automatically"
             )
+        if self.web_research and len(self.task) > 7000:
+            raise ValueError(
+                "task must be at most 7000 characters when web research is enabled"
+            )
         return self
 
 
