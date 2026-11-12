@@ -2,8 +2,8 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from emporia_api.agents.registry import get_agent, list_agents
 from emporia_api.auth import (
@@ -33,16 +33,16 @@ from emporia_api.network.brave_search import (
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.schemas import (
     AgentRead,
-    AuthMeRead,
-    AuthTokenRead,
     AgentRunCreate,
     AgentRunRead,
     AuditRead,
+    AuthMeRead,
+    AuthTokenRead,
     ChatCompletionRead,
     ChatCompletionRequest,
     LoginRequest,
-    RegisterRequest,
     ProviderRead,
+    RegisterRequest,
     ResearchQuery,
     ResearchRead,
     VentureCreate,
@@ -571,7 +571,7 @@ def login_account(payload: LoginRequest, session: SessionDep):
     if selected is None:
         raise HTTPException(status_code=403, detail="No membership exists for the selected workspace")
 
-    membership, workspace = selected
+    _membership, workspace = selected
     return AuthTokenRead(
         access_token=create_access_token(user.id, workspace.id),
         expires_in=settings.jwt_access_token_minutes * 60,
