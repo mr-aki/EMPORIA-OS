@@ -1,7 +1,14 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 
 class VentureCreate(BaseModel):
@@ -102,11 +109,11 @@ class AgentRunCreate(BaseModel):
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
 
-    @field_validator("research_query")
+    @field_validator("research_query", mode="before")
     @classmethod
-    def normalize_research_query(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def normalize_research_query(cls, value: Any) -> Any:
+        if value is None or not isinstance(value, str):
+            return value
         normalized = value.strip()
         if not normalized:
             raise ValueError("research_query must not be blank")
@@ -160,9 +167,11 @@ class ResearchQuery(BaseModel):
     query: str = Field(min_length=1, max_length=600)
     maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
 
-    @field_validator("query")
+    @field_validator("query", mode="before")
     @classmethod
-    def normalize_query(cls, value: str) -> str:
+    def normalize_query(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
         normalized = value.strip()
         if not normalized:
             raise ValueError("query must not be blank")
