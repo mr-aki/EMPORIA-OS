@@ -9,8 +9,8 @@ os.environ["EMPORIA_ENVIRONMENT"] = "test"
 import pytest
 from fastapi.testclient import TestClient
 
-from emporia_api.main import app
 from emporia_api.database import Base, engine
+from emporia_api.main import app
 
 
 @pytest.fixture()
