@@ -1,14 +1,15 @@
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, get_current_principal
 from emporia_api.database import get_session
-from emporia_api.models import AgentRun, AuditEvent, SkillRun, utcnow
+from emporia_api.models import AgentRun, AuditEvent, SkillRun, WorkspaceModelPrice, utcnow
+from emporia_api.schemas import ModelName
 from emporia_api.output_budgets import (
     get_workspace_output_budget_state,
     set_workspace_output_budget,
@@ -309,3 +310,283 @@ def update_output_budget(
     ))
     session.commit()
     return OutputBudgetRead(**state)
+
+
+ProviderName = Literal["openai", "anthropic", "gemini", "openai-compatible"]
+
+
+class ModelPriceUpdate(BaseModel):
+    """Operator-supplied USD rates; prices are never inferred from model names."""
+
+    input_usd_per_million_tokens: Decimal = Field(
+        ge=Decimal("0"), max_digits=20, decimal_places=10
+    )
+    output_usd_per_million_tokens: Decimal = Field(
+        ge=Decimal("0"), max_digits=20, decimal_places=10
+    )
+
+
+class ModelPriceRead(BaseModel):
+    provider: str
+    model: str
+    input_usd_per_million_tokens: Decimal
+    output_usd_per_million_tokens: Decimal
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CostTotals(BaseModel):
+    runs: int = 0
+    priced_runs: int = 0
+    unpriced_runs: int = 0
+    estimated_cost_usd: Decimal = Decimal("0")
+
+
+class ProviderModelCost(CostTotals):
+    execution_type: str
+    provider: str
+    model: str
+
+
+class DailyCost(CostTotals):
+    date: date
+
+
+class CostSummary(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    currency: Literal["USD"] = "USD"
+    totals: CostTotals
+    by_execution_type: dict[str, CostTotals]
+    by_provider_model: list[ProviderModelCost]
+    by_day: list[DailyCost]
+
+
+def _cost_aggregate(
+    session: Session,
+    run_model: Any,
+    workspace_id: str,
+    execution_type: str,
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[CostTotals, list[ProviderModelCost], list[DailyCost]]:
+    scope = _date_scope(run_model, workspace_id, start_date, end_date)
+    row = session.execute(
+        select(
+            func.count(run_model.id),
+            func.count(run_model.estimated_cost_usd),
+            func.coalesce(func.sum(run_model.estimated_cost_usd), 0),
+        ).where(*scope)
+    ).one()
+    totals = CostTotals(
+        runs=row[0],
+        priced_runs=row[1],
+        unpriced_runs=row[0] - row[1],
+        estimated_cost_usd=Decimal(str(row[2])),
+    )
+
+    grouped_rows = session.execute(
+        select(
+            run_model.provider,
+            run_model.model,
+            func.count(run_model.id),
+            func.count(run_model.estimated_cost_usd),
+            func.coalesce(func.sum(run_model.estimated_cost_usd), 0),
+        )
+        .where(*scope)
+        .group_by(run_model.provider, run_model.model)
+        .order_by(run_model.provider, run_model.model)
+    ).all()
+    breakdown = [
+        ProviderModelCost(
+            execution_type=execution_type,
+            provider=provider,
+            model=model,
+            runs=count,
+            priced_runs=priced,
+            unpriced_runs=count - priced,
+            estimated_cost_usd=Decimal(str(cost)),
+        )
+        for provider, model, count, priced, cost in grouped_rows
+    ]
+
+    daily_rows = session.execute(
+        select(
+            func.date(run_model.created_at),
+            func.count(run_model.id),
+            func.count(run_model.estimated_cost_usd),
+            func.coalesce(func.sum(run_model.estimated_cost_usd), 0),
+        )
+        .where(*scope)
+        .group_by(func.date(run_model.created_at))
+    ).all()
+    daily = [
+        DailyCost(
+            date=date.fromisoformat(str(day_value)[:10]),
+            runs=count,
+            priced_runs=priced,
+            unpriced_runs=count - priced,
+            estimated_cost_usd=Decimal(str(cost)),
+        )
+        for day_value, count, priced, cost in daily_rows
+    ]
+    return totals, breakdown, daily
+
+
+def _add_cost_totals(left: CostTotals, right: CostTotals) -> CostTotals:
+    return CostTotals(
+        runs=left.runs + right.runs,
+        priced_runs=left.priced_runs + right.priced_runs,
+        unpriced_runs=left.unpriced_runs + right.unpriced_runs,
+        estimated_cost_usd=left.estimated_cost_usd + right.estimated_cost_usd,
+    )
+
+
+@router.get("/pricing", response_model=list[ModelPriceRead])
+def list_model_prices(session: SessionDep, actor: AuthDep) -> list[ModelPriceRead]:
+    """List only the authenticated workspace's operator-configured model rates."""
+    return list(
+        session.scalars(
+            select(WorkspaceModelPrice)
+            .where(WorkspaceModelPrice.workspace_id == actor.workspace_id)
+            .order_by(WorkspaceModelPrice.provider, WorkspaceModelPrice.model)
+        )
+    )
+
+
+@router.put("/pricing/{provider}/{model}", response_model=ModelPriceRead)
+def set_model_price(
+    provider: ProviderName,
+    model: ModelName,
+    payload: ModelPriceUpdate,
+    session: SessionDep,
+    actor: AuthDep,
+) -> WorkspaceModelPrice:
+    """Create or update the USD rate used for future runs; prior run snapshots do not change."""
+    if actor.role not in {"owner", "admin"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners and admins can configure model pricing",
+        )
+
+    price = session.scalar(
+        select(WorkspaceModelPrice).where(
+            WorkspaceModelPrice.workspace_id == actor.workspace_id,
+            WorkspaceModelPrice.provider == provider,
+            WorkspaceModelPrice.model == model,
+        )
+    )
+    if price is None:
+        price = WorkspaceModelPrice(
+            workspace_id=actor.workspace_id,
+            provider=provider,
+            model=model,
+            input_usd_per_million_tokens=payload.input_usd_per_million_tokens,
+            output_usd_per_million_tokens=payload.output_usd_per_million_tokens,
+            updated_by=actor.user_id,
+        )
+        session.add(price)
+    else:
+        price.input_usd_per_million_tokens = payload.input_usd_per_million_tokens
+        price.output_usd_per_million_tokens = payload.output_usd_per_million_tokens
+        price.updated_by = actor.user_id
+        price.updated_at = utcnow()
+
+    session.flush()
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="usage.model_price.updated",
+        resource_type="workspace_model_price",
+        resource_id=price.id,
+        detail=f"{provider}:{model};currency:USD",
+        created_at=utcnow(),
+    ))
+    session.commit()
+    session.refresh(price)
+    return price
+
+
+@router.delete(
+    "/pricing/{provider}/{model}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_model_price(
+    provider: ProviderName,
+    model: ModelName,
+    session: SessionDep,
+    actor: AuthDep,
+) -> Response:
+    """Remove a future pricing rule without modifying cost snapshots on prior runs."""
+    if actor.role not in {"owner", "admin"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners and admins can remove model pricing",
+        )
+    price = session.scalar(
+        select(WorkspaceModelPrice).where(
+            WorkspaceModelPrice.workspace_id == actor.workspace_id,
+            WorkspaceModelPrice.provider == provider,
+            WorkspaceModelPrice.model == model,
+        )
+    )
+    if price is None:
+        raise HTTPException(status_code=404, detail="Model pricing not found")
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="usage.model_price.deleted",
+        resource_type="workspace_model_price",
+        resource_id=price.id,
+        detail=f"{provider}:{model}",
+        created_at=utcnow(),
+    ))
+    session.delete(price)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/costs", response_model=CostSummary)
+def get_cost_summary(
+    session: SessionDep,
+    actor: AuthDep,
+    start_date: Annotated[date | None, Query()] = None,
+    end_date: Annotated[date | None, Query()] = None,
+) -> CostSummary:
+    """Report immutable USD estimates from explicitly configured price snapshots."""
+    if start_date is not None and end_date is not None and end_date < start_date:
+        raise HTTPException(
+            status_code=422, detail="end_date must be on or after start_date"
+        )
+
+    agent_totals, agent_breakdown, agent_daily = _cost_aggregate(
+        session, AgentRun, actor.workspace_id, "agent", start_date, end_date
+    )
+    skill_totals, skill_breakdown, skill_daily = _cost_aggregate(
+        session, SkillRun, actor.workspace_id, "skill", start_date, end_date
+    )
+    daily_map: dict[date, CostTotals] = {}
+    for item in agent_daily + skill_daily:
+        current = daily_map.setdefault(item.date, CostTotals())
+        daily_map[item.date] = _add_cost_totals(
+            current,
+            CostTotals(
+                runs=item.runs,
+                priced_runs=item.priced_runs,
+                unpriced_runs=item.unpriced_runs,
+                estimated_cost_usd=item.estimated_cost_usd,
+            ),
+        )
+    return CostSummary(
+        start_date=start_date,
+        end_date=end_date,
+        totals=_add_cost_totals(agent_totals, skill_totals),
+        by_execution_type={"agent": agent_totals, "skill": skill_totals},
+        by_provider_model=agent_breakdown + skill_breakdown,
+        by_day=[
+            DailyCost(date=day, **totals.model_dump())
+            for day, totals in sorted(daily_map.items())
+        ],
+    )
