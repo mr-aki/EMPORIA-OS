@@ -199,6 +199,7 @@ class SkillInputRead(BaseModel):
     max_items: int | None = None
     minimum: float | None = None
     maximum: float | None = None
+    integer_only: bool = False
 
 
 class SkillRead(BaseModel):
@@ -249,6 +250,7 @@ class SkillRunRead(BaseModel):
     completion_tokens: int
     total_tokens: int
     provider_request_id: str | None
+    calculations: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     completed_at: datetime | None
 

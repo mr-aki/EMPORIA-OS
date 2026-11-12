@@ -314,3 +314,141 @@ def test_skill_run_finalizes_unexpected_provider_exception_safely(
         and event["detail"] == "provider_unexpected_failure"
         for event in events
     )
+
+
+
+def test_landed_cost_calculation_is_deterministic_and_reports_duty_assumption():
+    from emporia_api.skills.calculations import calculate_skill
+
+    calculated = calculate_skill(
+        "landed-cost-margin-analysis",
+        {
+            "currency": "USD",
+            "units_per_shipment": 100,
+            "supplier_unit_cost": 4.5,
+            "freight_total": 250,
+            "duty_rate_percent": 10,
+            "other_costs_per_unit": 0.5,
+            "selling_price": 19.99,
+            "channel_fee_percent": 10,
+        },
+    )
+    assert calculated["freight_per_unit"] == 2.5
+    assert calculated["duty_base_source"] == "provisional_supplier_unit_cost"
+    assert calculated["duty_per_unit"] == 0.45
+    assert calculated["landed_cost_per_unit"] == 7.95
+    assert calculated["contribution_per_unit"] == 10.041
+    assert calculated["currency"] == "USD"
+
+
+def test_inventory_reorder_calculation_accounts_for_confirmed_inbound_and_moq():
+    from emporia_api.skills.calculations import calculate_skill
+
+    calculated = calculate_skill(
+        "inventory-reorder-review",
+        {
+            "sku": "SKU-1",
+            "on_hand_units": 20,
+            "average_daily_demand": 5,
+            "supplier_lead_time_days": 7,
+            "safety_stock_units": 10,
+            "inbound_units": 5,
+            "minimum_order_quantity": 100,
+        },
+    )
+    assert calculated["lead_time_demand_units"] == 35
+    assert calculated["reorder_point_units"] == 45
+    assert calculated["inventory_position_units"] == 25
+    assert calculated["reorder_gap_units"] == 20
+    assert calculated["suggested_order_quantity"] == 100
+
+
+def test_pricing_promotion_calculation_computes_price_floor_and_volume_tradeoff():
+    from emporia_api.skills.calculations import calculate_skill
+
+    calculated = calculate_skill(
+        "pricing-promotion-review",
+        {
+            "unit_landed_cost": 7,
+            "current_price": 20,
+            "marketplace_fee_percent": 10,
+            "payment_fee_percent": 2,
+            "target_contribution_margin_percent": 20,
+            "promo_discount_percent": 25,
+        },
+    )
+    assert calculated["promotional_price"] == 15
+    assert calculated["current_contribution_per_unit"] == 10.6
+    assert calculated["promotional_contribution_per_unit"] == 6.2
+    assert calculated["target_margin_price_floor"] == 10.2941
+    assert calculated["volume_uplift_is_finite"] is True
+    assert calculated["required_volume_uplift_percent_to_match_current_contribution"] == 70.9677
+
+
+def test_skill_run_api_returns_and_supplies_authoritative_calculations(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.providers import ProviderReply
+
+    class FakeGateway:
+        def configured(self, provider):
+            return True
+
+        async def complete(self, request):
+            prompt = request.messages[1].content
+            assert "SERVER-SIDE VERIFIED CALCULATIONS (AUTHORITATIVE)" in prompt
+            assert '"landed_cost_per_unit": 7.95' in prompt
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="The calculated landed cost is 7.45 USD per unit.",
+                prompt_tokens=100,
+                completion_tokens=20,
+                total_tokens=120,
+                request_id="req_calculation_test",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    response = client.post(
+        "/api/v1/skills/landed-cost-margin-analysis/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "currency": "USD",
+                "units_per_shipment": 100,
+                "supplier_unit_cost": 4.5,
+                "freight_total": 250,
+                "duty_rate_percent": 10,
+                "other_costs_per_unit": 0.5,
+                "selling_price": 19.99,
+                "channel_fee_percent": 10,
+            },
+        },
+    )
+    assert response.status_code == 201
+    result = response.json()
+    assert result["calculations"]["landed_cost_per_unit"] == 7.45
+    assert result["calculations"]["duty_base_source"] == "provisional_supplier_unit_cost"
+
+
+
+def test_integer_skill_inputs_reject_fractional_inventory_quantities(client, auth_headers):
+    response = client.post(
+        "/api/v1/skills/inventory-reorder-review/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "sku": "SKU-2",
+                "on_hand_units": 2.5,
+                "average_daily_demand": 1.2,
+                "supplier_lead_time_days": 4,
+                "safety_stock_units": 2,
+            },
+        },
+    )
+    assert response.status_code == 422
+    assert "must be a whole number" in str(response.json()["detail"])

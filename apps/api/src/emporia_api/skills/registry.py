@@ -18,6 +18,7 @@ class SkillInput:
     max_items: int = 30
     minimum: float | None = None
     maximum: float | None = None
+    integer_only: bool = False
 
     def public_metadata(self) -> dict[str, Any]:
         return {
@@ -30,6 +31,7 @@ class SkillInput:
             "max_items": self.max_items if self.value_type == "array" else None,
             "minimum": self.minimum if self.value_type == "number" else None,
             "maximum": self.maximum if self.value_type == "number" else None,
+            "integer_only": self.integer_only if self.value_type == "number" else False,
         }
 
 
@@ -91,9 +93,11 @@ def T(key: str, label: str, desc: str, required: bool = True,
 def N(
     key: str, label: str, desc: str, required: bool = True,
     minimum: float | None = None, maximum: float | None = None,
+    integer_only: bool = False,
 ) -> SkillInput:
     return SkillInput(
-        key, label, "number", required, desc, minimum=minimum, maximum=maximum
+        key, label, "number", required, desc, minimum=minimum, maximum=maximum,
+        integer_only=integer_only,
     )
 
 
@@ -151,7 +155,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Extract useful customer patterns while preserving minority signals and evidence limits.",
       (T("customer_segment","Customer segment","Segment represented in the material."),
        T("interview_notes","Research notes","Anonymized interview, review, or support notes.",True,12000),
-       N("sample_size","Sample size","Number of people or records represented.",False,minimum=1)),
+       N("sample_size","Sample size","Number of people or records represented.",False,minimum=1,integer_only=True)),
       ("Summarize sample, collection method, and limitations.",
        "Code recurring jobs, triggers, anxieties, workarounds, objections, and desired outcomes.",
        "Distinguish frequency from severity; preserve contradictory and minority evidence.",
@@ -231,7 +235,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Turn a product brief into a supplier-ready quotation request and comparison template.",
       "Reduce ambiguity in supplier quotes and make offers comparable.",
       (O("product_spec","Product specification","Materials, dimensions, tolerance, packaging, quality."),
-       N("requested_quantity","Requested quantity","Order quantity and unit.",minimum=1),
+       N("requested_quantity","Requested quantity","Order quantity and unit.",minimum=1,integer_only=True),
        T("destination","Delivery destination","Destination and preferred Incoterm, if known."),
        T("target_delivery_date","Target delivery date","Required arrival or ship date.",False),
        A("compliance_requirements","Compliance requirements","Known standards, documents, and tests.",False)),
@@ -248,10 +252,11 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Model per-unit landed cost, fees, contribution, and sensitivity using supplied inputs.",
       "Show transparent unit economics and the assumptions that change profitability.",
       (T("currency","Currency","Currency code for all monetary inputs."),
-       N("units_per_shipment","Units per shipment","Units over which shipment costs are allocated.",minimum=1),
+       N("units_per_shipment","Units per shipment","Units over which shipment costs are allocated.",minimum=1,integer_only=True),
        N("supplier_unit_cost","Supplier unit cost","Supplier cost per unit.",minimum=0),
        N("freight_total","Total freight","Total shipment freight cost.",minimum=0),
        N("duty_rate_percent","Duty rate percent","Operator-supplied rate; specify taxable base in notes.",minimum=0,maximum=100),
+       N("duty_base_per_unit","Duty base per unit","Operator-supplied customs duty base per unit; defaults to supplier unit cost.",False,minimum=0),
        N("other_costs_per_unit","Other cost per unit","Insurance, inspection, packaging, other costs.",minimum=0),
        N("selling_price","Selling price","Expected selling price per unit.",minimum=0),
        N("channel_fee_percent","Channel fee percent","Variable fee on selling price.",False,minimum=0,maximum=100)),
@@ -268,12 +273,12 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Estimate reorder timing and quantity from demand, lead time, buffer, and inbound stock.",
       "Provide transparent replenishment guidance with stockout and overstock risks.",
       (T("sku","SKU","Product or SKU identifier."),
-       N("on_hand_units","On-hand units","Sellable inventory currently available.",minimum=0),
+       N("on_hand_units","On-hand units","Sellable inventory currently available.",minimum=0,integer_only=True),
        N("average_daily_demand","Average daily demand","Average daily unit demand over a stated period.",minimum=0),
        N("supplier_lead_time_days","Supplier lead time","Expected replenishment lead time in days.",minimum=0),
-       N("safety_stock_units","Safety stock","Target buffer units.",minimum=0),
-       N("inbound_units","Inbound units","Confirmed incoming units.",False,minimum=0),
-       N("minimum_order_quantity","Minimum order quantity","Supplier MOQ, if known.",False,minimum=1)),
+       N("safety_stock_units","Safety stock","Target buffer units.",minimum=0,integer_only=True),
+       N("inbound_units","Inbound units","Confirmed incoming units.",False,minimum=0,integer_only=True),
+       N("minimum_order_quantity","Minimum order quantity","Supplier MOQ, if known.",False,minimum=1,integer_only=True)),
       ("Validate that counts and demand use consistent units and periods.",
        "Calculate lead-time demand and reorder point as demand times lead time plus safety stock.",
        "Calculate inventory position from on-hand and confirmed inbound; flag allocations if unknown.",
@@ -309,7 +314,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
        T("offer","Offer or message","Product, offer, promise, and constraints."),
        A("channels","Channels","Channels under consideration.",True,12),
        N("budget","Budget","Available budget and currency context.",minimum=0),
-       N("timeframe_days","Timeframe in days","Campaign duration.",minimum=1),
+       N("timeframe_days","Timeframe in days","Campaign duration.",minimum=1,integer_only=True),
        T("constraints","Constraints","Brand, legal, inventory, creative, or operational limits.",False)),
       ("Clarify objective and distinguish leading indicators from business outcomes.",
        "Define audience insight, message, proof, offer, objections, and creative angle.",
@@ -408,6 +413,9 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
             valid = isinstance(value, (int, float)) and not isinstance(value, bool)
             if valid and isinstance(value, float):
                 valid = math.isfinite(value)
+            if valid and field.integer_only and isinstance(value, float) and not value.is_integer():
+                errors.append(f"Input '{field.key}' must be a whole number")
+                continue
             if valid and field.minimum is not None and value < field.minimum:
                 errors.append(f"Input '{field.key}' must be at least {field.minimum}")
                 continue

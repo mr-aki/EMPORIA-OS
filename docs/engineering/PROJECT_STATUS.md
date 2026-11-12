@@ -79,3 +79,10 @@ execution, persisted workspace-scoped run history, and start/completion/failure 
 events. Skills execute as advisory analysis only; they do not grant store, payment,
 supplier, advertising, fulfilment, or customer-action permissions. CI, evaluations, and
 security review remain release gates.
+
+
+The deterministic Skills calculation slice provides Decimal-based server results for
+landed-cost and margin, inventory reorder, and pricing/promotion scenarios. Inputs and
+assumptions are returned as structured calculation metadata, while the model receives
+the same verified numbers for narrative explanation. These are advisory calculations
+and remain subject to operator validation and domain-specific review.

@@ -223,3 +223,9 @@ provider. The server enforces `EMPORIA_SKILL_MAX_OUTPUT_TOKENS` (default 2048, a
 timestamps. Start/completion/failure events are written to the audit log; history is
 workspace-scoped. Input values are untrusted data and cannot grant permissions or override
 the skill procedure. See ../../skills/README.md for the catalog and governance boundaries.
+
+
+Deterministic numeric skills return server-calculated values in the calculations field
+of each skill-run response. The same values are passed to the model for explanation;
+the model is instructed not to alter or recalculate them. See ../../skills/README.md
+for formulas, assumptions, and limitations.

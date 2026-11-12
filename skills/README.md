@@ -65,3 +65,27 @@ security-reviewed for production deployment. Do not label it production_ready.
 
 The catalogue is intentionally a useful first pack rather than 135 placeholder prompts.
 Expand by domain with real input contracts, failure cases, evaluations, and security review.
+
+
+## Deterministic calculation engine
+
+Three skills return server-calculated numeric results in the "calculations"
+field of each run and pass the same values to the language model as authoritative context:
+
+- landed-cost-margin-analysis: freight/unit, duty/unit, landed cost/unit,
+  channel fees, contribution, contribution margin, and break-even price.
+- inventory-reorder-review: lead-time demand, reorder point, inventory position,
+  days of cover, reorder gap, and MOQ-aware suggested order quantity.
+- pricing-promotion-review: current and promotional contribution, target-margin
+  price floor, and the unit-volume uplift needed to preserve contribution.
+
+Calculations use decimal arithmetic and publish four-decimal precision. Monetary
+currency is supplied by the operator; no exchange-rate conversion is performed.
+For customs duty, duty_base_per_unit can be supplied explicitly. When omitted,
+the calculator uses supplier unit cost as a provisional base and marks that assumption
+in the result; confirm the applicable customs valuation basis before making a decision.
+
+Reorder inputs treat inbound units as confirmed and usable. The suggested quantity
+is a review aid based on the reorder gap and MOQ, not a purchase order. Pricing outputs
+exclude advertising, refunds, fixed costs, and taxes unless already included in the
+supplied landed cost. These are operating calculations, not tax, customs, or accounting advice.
