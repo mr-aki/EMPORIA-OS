@@ -1,6 +1,5 @@
 """Workspace-scoped business-action proposals, approvals and fail-closed execution gate."""
 import json
-from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -135,7 +134,7 @@ def create_business_action_request(
             same_request = (
                 existing.action_type == payload.action_type
                 and existing.target_ref == payload.target_ref
-                and existing.summary == payload.summary
+                and existing.summary == payload.summary.strip()
                 and existing.inputs_json == serialized_inputs
             )
             if same_request:
