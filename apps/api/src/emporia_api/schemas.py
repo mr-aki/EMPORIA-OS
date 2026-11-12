@@ -102,6 +102,24 @@ class AgentRunCreate(BaseModel):
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
 
+    @model_validator(mode="after")
+    def require_explicit_research_query(self):
+        if self.web_research and not self.research_query:
+            raise ValueError(
+                "research_query is required when web_research is enabled; "
+                "the task text is never sent to external search automatically"
+            )
+        return self
+
+
+class ResearchSourceRead(BaseModel):
+    index: int
+    url: str
+    title: str
+    hostname: str
+    snippets: list[str]
+    age: list[str]
+
 
 class AgentRunRead(BaseModel):
     id: str
@@ -117,6 +135,7 @@ class AgentRunRead(BaseModel):
     completion_tokens: int
     total_tokens: int
     provider_request_id: str | None
+    research_sources: list[ResearchSourceRead] = Field(default_factory=list)
     created_at: datetime
     completed_at: datetime | None
 
@@ -125,16 +144,8 @@ class AgentRunRead(BaseModel):
 
 class ResearchQuery(BaseModel):
     query: str = Field(min_length=1, max_length=600)
-    maximum_number_of_tokens: int = Field(default=4000, ge=1000, le=8192)
+    maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
 
-
-class ResearchSourceRead(BaseModel):
-    index: int
-    url: str
-    title: str
-    hostname: str
-    snippets: list[str]
-    age: list[str]
 
 
 class ResearchRead(BaseModel):
