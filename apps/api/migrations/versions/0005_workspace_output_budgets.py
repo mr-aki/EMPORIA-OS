@@ -38,19 +38,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("workspace_id", name="uq_workspace_output_token_budget"),
     )
-    op.create_index(
-        "ix_workspace_output_token_budgets_workspace_id",
-        "workspace_output_token_budgets",
-        ["workspace_id"],
-        unique=True,
-    )
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_workspace_output_token_budgets_workspace_id",
-        table_name="workspace_output_token_budgets",
-    )
     op.drop_table("workspace_output_token_budgets")
 
     with op.batch_alter_table("skill_runs") as batch_op:
