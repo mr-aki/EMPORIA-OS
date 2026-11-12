@@ -125,7 +125,6 @@ def test_unknown_agent_is_not_executable(client, auth_headers):
 
 
 def test_agent_run_persists_output_usage_and_audit(client, auth_headers, monkeypatch):
-    from emporia_api.main import provider_gateway
     from emporia_api.providers import ProviderReply
 
     class FakeGateway:
