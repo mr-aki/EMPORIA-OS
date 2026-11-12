@@ -220,3 +220,23 @@ def test_brave_search_rejects_malformed_grounding_shape(payload):
     )
     with pytest.raises(ResearchRequestError, match="invalid response"):
         asyncio.run(client.search("query"))
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"grounding": {"generic": []}},
+        {"sources": {}},
+        {"grounding": {}, "sources": {}},
+    ],
+)
+def test_brave_search_rejects_missing_response_contract(payload):
+    client = BraveSearchClient(
+        config=make_config(),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=payload)
+        ),
+    )
+
+    with pytest.raises(ResearchRequestError, match="invalid response"):
+        asyncio.run(client.search("query"))
