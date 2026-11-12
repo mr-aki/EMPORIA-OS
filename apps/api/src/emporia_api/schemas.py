@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 
 class VentureCreate(BaseModel):
@@ -102,6 +102,16 @@ class AgentRunCreate(BaseModel):
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
 
+    @field_validator("research_query")
+    @classmethod
+    def normalize_research_query(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("research_query must not be blank")
+        return normalized
+
     @model_validator(mode="after")
     def require_explicit_research_query(self):
         if self.web_research and not self.research_query:
@@ -149,6 +159,14 @@ class AgentRunRead(BaseModel):
 class ResearchQuery(BaseModel):
     query: str = Field(min_length=1, max_length=600)
     maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
+
+    @field_validator("query")
+    @classmethod
+    def normalize_query(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("query must not be blank")
+        return normalized
 
 
 
