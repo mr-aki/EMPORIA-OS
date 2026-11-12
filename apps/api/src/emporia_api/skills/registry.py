@@ -431,4 +431,13 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
                 continue
         if not valid:
             errors.append(f"Input '{field.key}' must be a non-empty {field.value_type}")
+
+    if skill.id == "pricing-promotion-review":
+        marketplace = inputs.get("marketplace_fee_percent", 0)
+        payment = inputs.get("payment_fee_percent", 0)
+        target = inputs.get("target_contribution_margin_percent", 0)
+        rates = (marketplace, payment, target)
+        if all(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) for value in rates):
+            if sum(rates) >= 100:
+                errors.append("Combined marketplace fee, payment fee, and target margin must be below 100 percent")
     return errors
