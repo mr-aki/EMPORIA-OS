@@ -12,10 +12,10 @@ from emporia_api.auth import require_api_token
 from emporia_api.config import settings
 from emporia_api.database import Base, engine, get_session
 from emporia_api.finance.frankfurter import (
+    FrankfurterClient,
     FXProviderError,
     FXProviderUnavailable,
     FXRateNotFound,
-    FrankfurterClient,
 )
 from emporia_api.models import AgentRun, AuditEvent, SkillRun, Venture, utcnow
 from emporia_api.network.brave_search import (
@@ -714,7 +714,7 @@ async def get_reference_fx_rate(
     quote: str,
     session: SessionDep,
     actor: AuthDep,
-    observation_date: date | None = Query(default=None, alias="date"),
+    observation_date: Annotated[date | None, Query(alias="date")] = None,
 ):
     """Fetch a dated daily reference rate; this is not a live trading quote."""
     try:
