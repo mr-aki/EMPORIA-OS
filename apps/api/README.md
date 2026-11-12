@@ -459,3 +459,17 @@ The API includes a workspace-scoped approval workflow for allow-listed commerce 
 The allow-list currently covers product catalogue updates, inventory adjustments, campaign publication, and order refunds. Proposal inputs have strict field validation, a 16 KB payload ceiling, recursive secret-field rejection, workspace-unique idempotency, and audit events. Owner-only team onboarding can add an already registered account to the current workspace as an admin, operator, or viewer; it is not an email invitation flow.
 
 All current catalogue entries report `executor_available=false`. Approving a request does not modify any live store, inventory, campaign, order, payment method, or customer record. A future external adapter must be separately reviewed for scopes, idempotency, preconditions, budget limits, dry-run behavior, verification, observability, and compensation before it can be enabled.
+
+
+## Workspace model pricing and cost estimates
+
+Workspace owners/admins can configure explicit USD rates per one million input/output tokens for each provider/model:
+
+- PUT /api/v1/usage/pricing/{provider}/{model} — create/update a rate.
+- GET /api/v1/usage/pricing — list configured rates for the authenticated workspace.
+- DELETE /api/v1/usage/pricing/{provider}/{model} — remove a rate for future runs.
+- GET /api/v1/usage/costs — show workspace cost estimates, priced/unpriced run counts, provider/model and execution-type breakdowns, and daily totals. Optional start_date and end_date filters are inclusive UTC dates.
+
+New agent and skill runs snapshot the configured rate before provider execution begins, including the durable worker path that reuses the same execution handlers. The recorded rate and estimated USD cost are stored with the run; a later rate change or deletion does not rewrite old costs. Estimates use decimal arithmetic and require both price rates and both prompt/completion token counters. Unknown rates or missing counters remain explicitly unpriced.
+
+The application never infers prices from model names. Operators must configure rates matching their provider contract. Estimates are not provider invoices, accounting-grade charges, or a spend cap. Chat completions, Brave Search, taxes, discounts, contract adjustments, and other external charges are not included.
