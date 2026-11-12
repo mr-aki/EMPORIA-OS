@@ -388,3 +388,60 @@ def test_delete_model_price_preserves_historical_run_cost(client, auth_headers, 
     summary = client.get("/api/v1/usage/costs", headers=auth_headers).json()
     assert Decimal(str(summary["totals"]["estimated_cost_usd"])) == previous_cost
 
+def test_skill_runs_use_price_snapshots_without_losing_output_evaluation(
+    client, auth_headers, monkeypatch
+):
+    configured = client.put(
+        "/api/v1/usage/pricing/openai/gpt-5",
+        headers=auth_headers,
+        json={
+            "input_usd_per_million_tokens": "1.5",
+            "output_usd_per_million_tokens": "3.5",
+        },
+    )
+    assert configured.status_code == 200, configured.text
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="## Executive verdict\nValidate demand before committing.",
+                prompt_tokens=100,
+                completion_tokens=50,
+                total_tokens=150,
+                request_id="priced-skill-run",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    response = client.post(
+        "/api/v1/skills/market-opportunity-scan/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "market": "Reusable home storage",
+                "geography": "United States",
+                "target_customer": "Apartment renters",
+            },
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    run = response.json()
+    assert Decimal(str(run["estimated_cost_usd"])) == Decimal("0.0003250000000000")
+    assert run["input_price_usd_per_million_tokens"] == "1.5000000000"
+    assert run["output_price_usd_per_million_tokens"] == "3.5000000000"
+    assert run["evaluation"]["passed"] is False
+
+    costs = client.get("/api/v1/usage/costs", headers=auth_headers)
+    assert costs.status_code == 200
+    assert costs.json()["totals"]["priced_runs"] == 1
+    assert Decimal(str(costs.json()["totals"]["estimated_cost_usd"])) == Decimal(
+        "0.0003250000000000"
+    )
+
