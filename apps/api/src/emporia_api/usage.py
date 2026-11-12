@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -58,7 +58,7 @@ def _date_scope(
     if start_date is not None:
         scope.append(
             run_model.created_at
-            >= datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+            >= datetime.combine(start_date, time.min, tzinfo=UTC)
         )
     if end_date is not None:
         scope.append(
