@@ -1,7 +1,3 @@
-from emporia_api.providers import ProviderReply
-
-
-
 MARKET_INPUTS = {
     "market": "Reusable home storage",
     "geography": "United Kingdom",
@@ -93,6 +89,8 @@ def test_skill_inputs_are_bounded_before_execution(client, auth_headers):
 
 
 def test_skill_run_persists_output_usage_and_audit(client, auth_headers, monkeypatch):
+    from emporia_api.providers import ProviderReply
+
     class FakeGateway:
         def configured(self, provider):
             assert provider == "openai"
