@@ -28,11 +28,12 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "workspaces",
             "workspace_memberships",
             "skill_runs",
+            "business_action_requests",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0002_skill_runs"
+        assert revision == "0003_business_action_requests"
     finally:
         engine.dispose()
 
