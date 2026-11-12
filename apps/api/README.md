@@ -136,6 +136,8 @@ curl -X POST http://localhost:8000/api/v1/agents/commerce-strategist/runs \\
   }'
 ```
 
+The server enforces a configurable per-run output-token ceiling with `EMPORIA_AGENT_MAX_OUTPUT_TOKENS` (default: 2048; allowed range: 1–4096). Requests above this ceiling are rejected before a run is created or a provider is called. This is a per-request output bound, not a monthly monetary budget or a complete rate/concurrency limiter.
+
 Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. Known upstream failures and unexpected research/provider exceptions transition the run to a terminal failed state; unexpected exception details are not returned to API clients.
 
 **Agent contract:** `GET /api/v1/agents` also returns each specialist's category, expected deliverables, required context, version, and expertise. Internal system prompts remain private. All eight specialists execute through the same provider and run-history pipeline; newly added specialists are covered by endpoint-level execution tests.
