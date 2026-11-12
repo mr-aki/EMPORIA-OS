@@ -42,6 +42,7 @@ def test_alembic_upgrade_creates_all_current_tables_and_workspace_indexes(
             "audit_events",
             "agent_runs",
             "skill_runs",
+            "background_jobs",
         }.issubset(tables)
 
         expected_indexes = {
@@ -49,16 +50,20 @@ def test_alembic_upgrade_creates_all_current_tables_and_workspace_indexes(
             "audit_events": "ix_audit_events_workspace_id",
             "agent_runs": "ix_agent_runs_workspace_id",
             "skill_runs": "ix_skill_runs_workspace_id",
+            "background_jobs": "ix_background_jobs_workspace_id",
         }
         for table, index_name in expected_indexes.items():
             names = {item["name"] for item in inspector.get_indexes(table)}
             assert index_name in names
 
+        indexes = {item["name"] for item in inspector.get_indexes("background_jobs")}
+        assert "ix_background_jobs_status_available_at" in indexes
+
         with engine.connect() as connection:
             version = connection.execute(
                 text("SELECT version_num FROM alembic_version")
             ).scalar_one()
-        assert version == "0001_initial_schema"
+        assert version == "0002_background_jobs"
     finally:
         engine.dispose()
 
@@ -79,6 +84,7 @@ def test_alembic_downgrade_removes_baseline_tables(tmp_path, monkeypatch):
             "audit_events",
             "agent_runs",
             "skill_runs",
+            "background_jobs",
         }.intersection(tables)
         assert "alembic_version" in tables
         with engine.connect() as connection:
@@ -119,7 +125,7 @@ def test_existing_create_all_database_can_be_stamped_without_data_loss(
                 text("SELECT version_num FROM alembic_version")
             ).scalar_one()
         assert name == "Existing Store"
-        assert version == "0001_initial_schema"
+        assert version == "0002_background_jobs"
     finally:
         engine.dispose()
 
