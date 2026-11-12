@@ -218,7 +218,8 @@ Example request body:
     }
 
 Each skill rejects unknown inputs and validates required fields and types before calling a
-provider. Runs persist skill version, input data, result, provider usage, status, and
+provider. The server enforces `EMPORIA_SKILL_MAX_OUTPUT_TOKENS` (default 2048, allowed range
+1–4096) before persisting a run or calling the provider. Runs persist skill version, input data, result, provider usage, status, and
 timestamps. Start/completion/failure events are written to the audit log; history is
 workspace-scoped. Input values are untrusted data and cannot grant permissions or override
 the skill procedure. See ../../skills/README.md for the catalog and governance boundaries.
