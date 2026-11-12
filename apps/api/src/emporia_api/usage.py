@@ -221,6 +221,9 @@ def get_usage_summary(
     for item in agent_daily + skill_daily:
         aggregate = daily_map.setdefault(item.date, UsageTotals())
         aggregate.runs += item.runs
+        aggregate.completed_runs += item.completed_runs
+        aggregate.failed_runs += item.failed_runs
+        aggregate.running_runs += item.running_runs
         aggregate.prompt_tokens += item.prompt_tokens
         aggregate.completion_tokens += item.completion_tokens
         aggregate.total_tokens += item.total_tokens
