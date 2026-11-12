@@ -44,6 +44,7 @@ These are product goals, not claims that every module exists today.
 | Web research | Explicit Brave Search LLM Context API connector with source metadata and untrusted-context handling |
 | Database lifecycle | Alembic migrations, Docker Compose startup migration, migration coverage for fresh and legacy schemas |
 | Finance reference rates | Authenticated historical/latest FX lookups and Decimal conversion through the keyless Frankfurter daily-reference API |
+| Action governance | Workspace-scoped proposal contracts, separate owner/admin approval, request cancellation, audit trail, and fail-closed execution gate; no live executors |
 
 See [API setup and endpoint documentation](apps/api/README.md) and the [verified project status](docs/engineering/PROJECT_STATUS.md).
 
