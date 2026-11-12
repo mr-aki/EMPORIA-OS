@@ -46,6 +46,7 @@ from emporia_api.network.brave_search import (
     ResearchRequestError,
 )
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
+from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
 from emporia_api.schemas import (
     AgentRead,
     AgentRunCreate,
@@ -290,6 +291,21 @@ async def execute_agent(
         response.status_code = status.HTTP_200_OK
         response.headers["Idempotency-Replayed"] = "true"
         return existing
+
+    try:
+        consume_workspace_rate_limit(
+            session,
+            actor.workspace_id,
+            "agent",
+            settings.agent_runs_per_minute,
+        )
+    except RateLimitExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail="Workspace agent execution rate limit reached",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
 
     run = AgentRun(
         workspace_id=actor.workspace_id,
@@ -831,6 +847,21 @@ async def execute_skill(
         response.status_code = status.HTTP_200_OK
         response.headers["Idempotency-Replayed"] = "true"
         return existing
+
+    try:
+        consume_workspace_rate_limit(
+            session,
+            actor.workspace_id,
+            "skill",
+            settings.skill_runs_per_minute,
+        )
+    except RateLimitExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail="Workspace skill execution rate limit reached",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
 
     run = SkillRun(
         workspace_id=actor.workspace_id,
