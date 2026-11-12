@@ -128,7 +128,7 @@ def get_usage_summary(session: SessionDep, actor: AuthDep) -> UsageSummary:
 
 
 class OutputBudgetUpdate(BaseModel):
-    monthly_output_tokens: int = Field(ge=1, le=10_000_000_000)
+    monthly_output_tokens: int = Field(ge=1, le=2_000_000_000)
 
 
 class OutputBudgetRead(BaseModel):
