@@ -213,6 +213,14 @@ def test_research_search_validates_query_and_context_budget(client, auth_headers
     )
     assert response.status_code == 422
 
+    blank = client.post(
+        "/api/v1/research/search",
+        headers=auth_headers,
+        json={"query": "   "},
+    )
+    assert blank.status_code == 422
+    assert "query must not be blank" in blank.text
+
     response = client.post(
         "/api/v1/research/search",
         headers=auth_headers,
@@ -274,7 +282,7 @@ def test_agent_can_include_network_research_context(client, auth_headers, monkey
             "model": "gpt-5",
             "task": "Assess the home storage niche.",
             "web_research": True,
-            "research_query": "home storage ecommerce demand",
+            "research_query": "  home storage ecommerce demand  ",
         },
     )
 
@@ -300,6 +308,20 @@ def test_agent_research_requires_a_separate_explicit_query(client, auth_headers)
     )
     assert response.status_code == 422
     assert "research_query is required" in response.text
+
+    blank_query = client.post(
+        "/api/v1/agents/product-research-analyst/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Assess a public product category.",
+            "web_research": True,
+            "research_query": "   ",
+        },
+    )
+    assert blank_query.status_code == 422
+    assert "research_query must not be blank" in blank_query.text
 
 
 def test_agent_research_bounds_task_size_before_external_call(client, auth_headers):
