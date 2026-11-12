@@ -2,8 +2,8 @@ import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
 
-import jwt
 from fastapi import HTTPException
+import jwt
 from sqlalchemy import select
 
 from emporia_api.config import settings
