@@ -331,3 +331,88 @@ class BusinessActionRequest(Base):
         except (TypeError, ValueError):
             return {}
         return value if isinstance(value, dict) else {}
+
+
+class ShopifyConnection(Base):
+    __tablename__ = "shopify_connections"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "shop_domain", name="uq_shopify_workspace_shop"),
+        Index("ix_shopify_connections_workspace_id", "workspace_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    connected_by: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    shop_domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_token_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_ciphertext: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    access_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    refresh_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    scopes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="connected", nullable=False)
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
+class ShopifyOAuthState(Base):
+    __tablename__ = "shopify_oauth_states"
+    __table_args__ = (
+        UniqueConstraint("state_hash", name="uq_shopify_oauth_state_hash"),
+        Index("ix_shopify_oauth_states_expires_at", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    shop_domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+
+class ShopifyProduct(Base):
+    __tablename__ = "shopify_products"
+    __table_args__ = (
+        UniqueConstraint(
+            "connection_id", "shopify_product_id", name="uq_shopify_connection_product"
+        ),
+        Index("ix_shopify_products_workspace_id", "workspace_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("shopify_connections.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    shopify_product_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    handle: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    vendor: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    product_type: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    product_json: Mapped[str] = mapped_column(Text, nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
