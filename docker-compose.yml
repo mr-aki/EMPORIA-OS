@@ -22,7 +22,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
+    environment: &emporia-environment
       EMPORIA_ENVIRONMENT: ${EMPORIA_ENVIRONMENT:-development}
       EMPORIA_DATABASE_URL: ${EMPORIA_DATABASE_URL:-postgresql+psycopg://emporia:local-dev-postgres-password@postgres:5432/emporia}
       EMPORIA_API_TOKEN: ${EMPORIA_API_TOKEN:-local-development-token-change-this}
@@ -37,6 +37,20 @@ services:
       EMPORIA_OPENAI_COMPATIBLE_BASE_URL: ${EMPORIA_OPENAI_COMPATIBLE_BASE_URL:-}
       EMPORIA_OPENAI_COMPATIBLE_API_KEY: ${EMPORIA_OPENAI_COMPATIBLE_API_KEY:-}
       EMPORIA_BRAVE_SEARCH_API_KEY: ${EMPORIA_BRAVE_SEARCH_API_KEY:-}
+      EMPORIA_WORKER_POLL_SECONDS: ${EMPORIA_WORKER_POLL_SECONDS:-2}
+      EMPORIA_WORKER_LEASE_SECONDS: ${EMPORIA_WORKER_LEASE_SECONDS:-300}
+      EMPORIA_WORKER_BACKOFF_BASE_SECONDS: ${EMPORIA_WORKER_BACKOFF_BASE_SECONDS:-5}
+      EMPORIA_WORKER_BACKOFF_MAX_SECONDS: ${EMPORIA_WORKER_BACKOFF_MAX_SECONDS:-300}
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./apps/api
+    command: ["python", "-m", "emporia_api.worker"]
+    environment: *emporia-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
