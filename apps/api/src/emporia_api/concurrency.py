@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from emporia_api.models import AgentRun, SkillRun, Workspace
+from emporia_api.models import AgentRun, AuditEvent, SkillRun, Workspace
 
 
 class ConcurrentExecutionLimitExceeded(Exception):
@@ -53,8 +53,24 @@ def reserve_execution_slot(
             completed_at=current,
             budget_charged_tokens=run_model.requested_max_tokens,
         )
+        .returning(run_model.id)
     )
-    if expired.rowcount:
+    expired_ids = session.execute(expired).scalars().all()
+    if expired_ids:
+        execution_type = "agent" if run_model is AgentRun else "skill"
+        resource_type = "agent_run" if run_model is AgentRun else "skill_run"
+        session.add_all(
+            AuditEvent(
+                workspace_id=workspace_id,
+                actor="system",
+                action=f"{execution_type}.run.failed",
+                resource_type=resource_type,
+                resource_id=run_id,
+                detail="execution_lease_expired",
+                created_at=current,
+            )
+            for run_id in expired_ids
+        )
         # Persist stale-run recovery, then reacquire the workspace lock before
         # counting and reserving capacity so concurrent workers remain ordered.
         session.commit()
