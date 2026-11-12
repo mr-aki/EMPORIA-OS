@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -92,8 +93,8 @@ class BraveSearchClient:
         normalized_language = search_lang.strip().lower()
         if len(normalized_country) != 2 or not normalized_country.isalpha():
             raise ValueError("Country must be a two-letter ISO country code")
-        if not 2 <= len(normalized_language) <= 8 or not normalized_language.isalpha():
-            raise ValueError("Search language must be a valid 2-8 character language code")
+        if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z0-9]{2,4})?", normalized_language):
+            raise ValueError("Search language must be a valid language code such as en or zh-hans")
 
         key = self._secret(self.config.brave_search_api_key)
         headers = {
