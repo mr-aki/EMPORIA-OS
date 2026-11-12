@@ -800,3 +800,176 @@ def test_fx_rate_query_date_is_validated_and_forwarded(client, auth_headers, mon
 
     assert response.status_code == 200
     assert response.json()["date"] == "2025-05-01"
+
+
+def test_background_agent_job_is_idempotent_and_can_be_cancelled(
+    client, auth_headers, monkeypatch
+):
+    class ConfiguredGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", ConfiguredGateway())
+    payload = {
+        "kind": "agent",
+        "agent_id": "commerce-strategist",
+        "payload": {
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Draft a 30-day launch validation plan.",
+        },
+        "max_attempts": 3,
+        "idempotency_key": "launch-plan-request-01",
+    }
+
+    created = client.post("/api/v1/jobs", headers=auth_headers, json=payload)
+    assert created.status_code == 201
+    job = created.json()
+    assert job["kind"] == "agent"
+    assert job["target_id"] == "commerce-strategist"
+    assert job["status"] == "queued"
+    assert job["attempts"] == 0
+    assert job["max_attempts"] == 3
+    assert job["result_id"] is None
+    assert "payload" not in job
+    assert "task" not in job
+
+    repeated = client.post("/api/v1/jobs", headers=auth_headers, json=payload)
+    assert repeated.status_code == 201
+    assert repeated.json()["id"] == job["id"]
+
+    history = client.get("/api/v1/jobs", headers=auth_headers)
+    assert history.status_code == 200
+    assert len([item for item in history.json() if item["id"] == job["id"]]) == 1
+
+    detail = client.get(f"/api/v1/jobs/{job['id']}", headers=auth_headers)
+    assert detail.status_code == 200
+    assert detail.json()["id"] == job["id"]
+
+    mismatched = {
+        **payload,
+        "payload": {
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Different payload for the same key.",
+        },
+    }
+    conflict = client.post("/api/v1/jobs", headers=auth_headers, json=mismatched)
+    assert conflict.status_code == 409
+
+    cancelled = client.post(
+        f"/api/v1/jobs/{job['id']}/cancel",
+        headers=auth_headers,
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    repeated_cancel = client.post(
+        f"/api/v1/jobs/{job['id']}/cancel",
+        headers=auth_headers,
+    )
+    assert repeated_cancel.status_code == 409
+
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(event["action"] == "job.queued" for event in events)
+    assert any(event["action"] == "job.cancelled" for event in events)
+
+
+def test_background_job_endpoints_require_authentication(client):
+    assert client.get("/api/v1/jobs").status_code == 401
+    assert client.post(
+        "/api/v1/jobs",
+        json={
+            "kind": "agent",
+            "agent_id": "commerce-strategist",
+            "payload": {
+                "provider": "openai",
+                "model": "gpt-5",
+                "task": "test",
+            },
+        },
+    ).status_code == 401
+
+
+def test_background_job_validation_checks_target_and_provider(
+    client, auth_headers, monkeypatch
+):
+    class UnconfiguredGateway:
+        def configured(self, provider):
+            return False
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", UnconfiguredGateway())
+    unknown = client.post(
+        "/api/v1/jobs",
+        headers=auth_headers,
+        json={
+            "kind": "agent",
+            "agent_id": "missing-agent",
+            "payload": {
+                "provider": "openai",
+                "model": "gpt-5",
+                "task": "test",
+            },
+        },
+    )
+    assert unknown.status_code == 404
+
+    configured_agent = client.post(
+        "/api/v1/jobs",
+        headers=auth_headers,
+        json={
+            "kind": "agent",
+            "agent_id": "commerce-strategist",
+            "payload": {
+                "provider": "openai",
+                "model": "gpt-5",
+                "task": "test",
+            },
+        },
+    )
+    assert configured_agent.status_code == 503
+
+    unauthenticated_detail = client.get(
+        "/api/v1/jobs/not-a-real-id",
+        headers={"Authorization": "Bearer wrong"},
+    )
+    assert unauthenticated_detail.status_code == 401
+
+
+def test_background_job_cancel_is_workspace_scoped(client, auth_headers, monkeypatch):
+    class ConfiguredGateway:
+        def configured(self, provider):
+            return True
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", ConfiguredGateway())
+    created = client.post(
+        "/api/v1/jobs",
+        headers=auth_headers,
+        json={
+            "kind": "agent",
+            "agent_id": "commerce-strategist",
+            "payload": {
+                "provider": "openai",
+                "model": "gpt-5",
+                "task": "Workspace isolation test.",
+            },
+        },
+    )
+    assert created.status_code == 201
+    job_id = created.json()["id"]
+
+    from emporia_api.config import settings
+
+    original_workspace = settings.workspace_id
+    try:
+        settings.workspace_id = "another-workspace"
+        assert client.get(
+            f"/api/v1/jobs/{job_id}",
+            headers=auth_headers,
+        ).status_code == 404
+        assert client.post(
+            f"/api/v1/jobs/{job_id}/cancel",
+            headers=auth_headers,
+        ).status_code == 404
+    finally:
+        settings.workspace_id = original_workspace
