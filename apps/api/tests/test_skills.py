@@ -161,8 +161,8 @@ def test_skill_run_evaluation_passes_only_when_every_required_section_has_body(
 
     skill = get_skill("market-opportunity-scan")
     assert skill is not None
-    output = "\\n\\n".join(
-        f"## {section}\\n- Evidence and analysis for {section}."
+    output = "\n\n".join(
+        f"## {section}\n- Evidence and analysis for {section}."
         for section in skill.output_sections
     )
 
