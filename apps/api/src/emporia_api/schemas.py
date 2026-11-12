@@ -82,3 +82,40 @@ class ProviderRead(BaseModel):
     configured: bool
     protocol: str
     docs_url: str
+
+
+class AgentRead(BaseModel):
+    id: str
+    name: str
+    version: str
+    mission: str
+    expertise: list[str]
+    tools_enabled: bool = False
+
+
+class AgentRunCreate(BaseModel):
+    provider: Literal["openai", "anthropic", "gemini", "openai-compatible"]
+    model: ModelName
+    task: str = Field(min_length=1, max_length=12000)
+    max_tokens: int = Field(default=1800, ge=1, le=4096)
+    temperature: float | None = Field(default=0.2, ge=0, le=2)
+
+
+class AgentRunRead(BaseModel):
+    id: str
+    agent_id: str
+    agent_version: str
+    provider: str
+    model: str
+    status: Literal["running", "completed", "failed"]
+    task: str
+    output: str
+    error_message: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    provider_request_id: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
