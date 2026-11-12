@@ -983,6 +983,7 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
             if field.required:
                 errors.append(f"Input '{field.key}' cannot be null")
             continue
+        specific_error = False
         if field.value_type == "text":
             valid = isinstance(value, str) and (bool(value.strip()) or not field.required)
             if valid and len(value) > field.max_length:
@@ -1013,19 +1014,23 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
                     if isinstance(item, bool) or not isinstance(item, (int, float)):
                         errors.append(f"Input '{field.key}' item {index} must be a number")
                         valid = False
+                        specific_error = True
                         break
                     if isinstance(item, float) and not math.isfinite(item):
                         errors.append(f"Input '{field.key}' item {index} must be finite")
                         valid = False
+                        specific_error = True
                         break
                     if field.item_minimum is not None and item < field.item_minimum:
                         errors.append(f"Input '{field.key}' item {index} must be at least {field.item_minimum}")
                         valid = False
+                        specific_error = True
                         break
                     if field.item_maximum is not None and item > field.item_maximum:
                         errors.append(f"Input '{field.key}' item {index} must be at most {field.item_maximum}")
                         valid = False
+                        specific_error = True
                         break
-        if not valid:
+        if not valid and not specific_error:
             errors.append(f"Input '{field.key}' must be a non-empty {field.value_type}")
     return errors
