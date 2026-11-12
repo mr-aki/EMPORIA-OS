@@ -184,12 +184,12 @@ def test_brave_search_rejects_malformed_grounding_shape():
         asyncio.run(client.search("query"))
 
 
-def test_brave_search_accepts_empty_response_shape():
+def test_brave_search_rejects_missing_grounding_contract():
     client = BraveSearchClient(
         config=make_config(),
         transport=httpx.MockTransport(
             lambda request: httpx.Response(200, json={"unexpected": "shape"})
         ),
     )
-    result = asyncio.run(client.search("query"))
-    assert result.sources == ()
+    with pytest.raises(ResearchRequestError, match="invalid response"):
+        asyncio.run(client.search("query"))
