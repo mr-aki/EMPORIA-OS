@@ -14,7 +14,7 @@ from emporia_api.models import (
     WorkspaceMembership,
     utcnow,
 )
-from emporia_api.worker import run_one_job
+from emporia_api.worker import _renew_job_lease, run_one_job
 
 
 def create_job(client, **overrides):
@@ -214,3 +214,39 @@ def test_cancelled_jobs_are_not_claimed_or_executed(client, monkeypatch):
     monkeypatch.setattr("emporia_api.main.execute_agent", unexpected_execute)
     assert asyncio.run(run_one_job("worker-cancelled")) is False
     assert get_job(job_id).status == "cancelled"
+
+
+
+def test_worker_lease_heartbeat_renews_only_the_current_owner(client):
+    job_id, _, _ = create_job(client)
+    with SessionLocal() as session:
+        assert claim_next_job(session, "worker-heartbeat") == job_id
+    with SessionLocal() as session:
+        job = session.get(BackgroundJob, job_id)
+        job.locked_at = utcnow() - timedelta(seconds=90)
+        session.commit()
+    before = get_job(job_id).locked_at
+
+    assert _renew_job_lease(job_id, "worker-heartbeat") is True
+    after = get_job(job_id).locked_at
+    assert after != before
+    assert _renew_job_lease(job_id, "different-worker") is False
+
+
+def test_worker_does_not_finalize_job_after_losing_lease(client, monkeypatch):
+    job_id, _, _ = create_job(client)
+
+    async def steal_lease(agent_id, payload, response, session, actor):
+        with SessionLocal() as other_session:
+            job = other_session.get(BackgroundJob, job_id)
+            job.locked_by = "replacement-worker"
+            job.locked_at = utcnow()
+            other_session.commit()
+        return SimpleNamespace(id="stale-agent-run")
+
+    monkeypatch.setattr("emporia_api.main.execute_agent", steal_lease)
+    assert asyncio.run(run_one_job("original-worker")) is False
+    job = get_job(job_id)
+    assert job.status == "running"
+    assert job.locked_by == "replacement-worker"
+    assert job.result_id is None
