@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     skill_max_output_tokens: int = Field(default=2048, ge=1, le=4096)
     agent_runs_per_minute: int = Field(default=10, ge=1, le=600)
     skill_runs_per_minute: int = Field(default=20, ge=1, le=600)
+    agent_max_concurrent_runs: int = Field(default=3, ge=1, le=100)
+    skill_max_concurrent_runs: int = Field(default=5, ge=1, le=100)
+    execution_lease_seconds: int = Field(default=300, ge=60, le=3600)
     jwt_secret: SecretStr | None = None
     jwt_issuer: str = "emporia-os"
     jwt_access_token_minutes: int = 60
