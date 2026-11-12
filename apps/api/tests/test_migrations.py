@@ -79,8 +79,13 @@ def test_alembic_downgrade_removes_baseline_tables(tmp_path, monkeypatch):
             "audit_events",
             "agent_runs",
             "skill_runs",
-            "alembic_version",
         }.intersection(tables)
+        assert "alembic_version" in tables
+        with engine.connect() as connection:
+            remaining_revisions = connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).all()
+        assert remaining_revisions == []
     finally:
         engine.dispose()
 
