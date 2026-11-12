@@ -10,7 +10,7 @@ def test_skill_catalog_requires_auth_and_exposes_safe_metadata(client, auth_head
     response = client.get("/api/v1/skills", headers=auth_headers)
     assert response.status_code == 200
     skills = response.json()
-    assert len(skills) == 45
+    assert len(skills) == 60
     assert "market-opportunity-scan" in {item["id"] for item in skills}
     assert all(item["execution_mode"] == "advisory" for item in skills)
     assert all(item["external_actions_enabled"] is False for item in skills)
@@ -496,7 +496,7 @@ def test_second_skill_pack_has_complete_versioned_contracts():
     from emporia_api.skills.registry import SKILLS, get_skill
 
     ids = {skill.id for skill in SKILLS}
-    assert len(ids) == 45
+    assert len(ids) == 60
     assert SECOND_PACK_SKILL_IDS <= ids
 
     for skill_id in SECOND_PACK_SKILL_IDS:
@@ -662,3 +662,140 @@ def test_array_numeric_item_bounds_are_published_and_enforced(client, auth_heade
     )
     assert excessive.status_code == 422
     assert "item 2 must be at most 100" in str(excessive.json()["detail"])
+
+
+
+FOURTH_PACK_SKILL_IDS = {
+    "contribution-margin-waterfall",
+    "profit-loss-variance-diagnostic",
+    "cash-conversion-cycle-review",
+    "customer-acquisition-cost-review",
+    "cohort-ltv-estimator",
+    "paid-media-budget-pacing-review",
+    "creative-fatigue-diagnostic",
+    "product-catalogue-data-quality-audit",
+    "product-attribute-normalizer",
+    "product-variant-architecture",
+    "product-image-asset-brief",
+    "product-description-fact-check",
+    "warehouse-slotting-review",
+    "order-exception-diagnostic",
+    "fulfilment-capacity-planner",
+}
+
+
+def test_fourth_skill_pack_has_complete_versioned_contracts():
+    from emporia_api.skills.registry import SKILLS, get_skill
+
+    ids = {skill.id for skill in SKILLS}
+    assert len(ids) == 60
+    assert FOURTH_PACK_SKILL_IDS <= ids
+    for skill_id in FOURTH_PACK_SKILL_IDS:
+        skill = get_skill(skill_id)
+        assert skill is not None
+        assert skill.version == "1.0.0"
+        assert skill.objective.strip()
+        assert len(skill.inputs) >= 4
+        assert len({item.key for item in skill.inputs}) == len(skill.inputs)
+        assert len(skill.procedure) >= 5
+        assert len(skill.output_sections) >= 5
+        assert len(skill.guardrails) >= 2
+
+
+def test_deterministic_finance_skill_calculations():
+    from emporia_api.skills.calculations import calculate_skill
+
+    waterfall = calculate_skill(
+        "contribution-margin-waterfall",
+        {
+            "currency": "USD",
+            "gross_sales": 10000,
+            "discounts": 500,
+            "refunds": 250,
+            "cost_of_goods_sold": 3500,
+            "fulfilment_costs": 700,
+            "channel_fees": 650,
+            "advertising_spend": 900,
+            "other_variable_costs": 100,
+        },
+    )
+    assert waterfall["net_sales"] == 9250
+    assert waterfall["gross_profit"] == 5750
+    assert waterfall["contribution_before_advertising"] == 4300
+    assert waterfall["contribution_after_advertising"] == 3400
+    assert waterfall["contribution_margin_after_advertising_percent"] == 36.7568
+
+    cac = calculate_skill(
+        "customer-acquisition-cost-review",
+        {
+            "currency": "USD",
+            "media_spend": 1200,
+            "agency_fees": 200,
+            "creative_cost": 100,
+            "measurement_tool_cost": 50,
+            "other_acquisition_costs": 50,
+            "new_customers": 100,
+            "attribution_method": "Last non-direct click, 7-day click window",
+        },
+    )
+    assert cac["media_only_cac"] == 12
+    assert cac["fully_loaded_cac"] == 16
+
+    ltv = calculate_skill(
+        "cohort-ltv-estimator",
+        {
+            "currency": "USD",
+            "monthly_arpu": 40,
+            "gross_margin_percent": 60,
+            "monthly_churn_percent": 5,
+            "monthly_discount_rate_percent": 1,
+        },
+    )
+    assert ltv["monthly_contribution_per_customer"] == 24
+    assert ltv["estimated_contribution_ltv"] == 400
+
+
+def test_finance_skill_runs_return_authoritative_calculation_payload(client, auth_headers, monkeypatch):
+    from emporia_api.providers import ProviderReply
+
+    class FakeGateway:
+        def configured(self, provider):
+            return True
+
+        async def complete(self, request):
+            assert "SERVER-SIDE VERIFIED CALCULATIONS (AUTHORITATIVE)" in request.messages[1].content
+            assert '"contribution_after_advertising": 3400.0' in request.messages[1].content
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="Contribution after advertising is 3400 USD.",
+                prompt_tokens=120,
+                completion_tokens=30,
+                total_tokens=150,
+                request_id="req_waterfall_test",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    response = client.post(
+        "/api/v1/skills/contribution-margin-waterfall/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "currency": "USD",
+                "gross_sales": 10000,
+                "discounts": 500,
+                "refunds": 250,
+                "cost_of_goods_sold": 3500,
+                "fulfilment_costs": 700,
+                "channel_fees": 650,
+                "advertising_spend": 900,
+                "other_variable_costs": 100,
+            },
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["calculations"]["contribution_after_advertising"] == 3400
+    assert body["skill_version"] == "1.0.0"

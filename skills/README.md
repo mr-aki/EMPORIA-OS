@@ -141,3 +141,30 @@ supplier, inventory, pricing, or campaign action is performed by executing a ski
 The third pack is still advisory. In particular, policy and claims skills analyze operator-supplied
 documents and evidence; they do not fetch current regulations, verify live marketplace rules,
 certify a product, or provide legal approval.
+
+
+## Core commerce pack v4 (skills 46–60)
+
+| Skill ID | Domain | Purpose |
+|---|---|---|
+| contribution-margin-waterfall | finance | Reconcile revenue into contribution before and after acquisition spend |
+| profit-loss-variance-diagnostic | finance | Explain P&L movements and operational variance drivers |
+| cash-conversion-cycle-review | finance | Assess inventory, receivable, payable days, and cash-cycle levers |
+| customer-acquisition-cost-review | growth | Calculate media-only and fully loaded CAC using supplied allocation rules |
+| cohort-ltv-estimator | growth | Estimate steady-state contribution LTV with explicit churn assumptions |
+| paid-media-budget-pacing-review | advertising | Compare planned and actual campaign spend and pacing |
+| creative-fatigue-diagnostic | advertising | Separate creative fatigue from audience, offer, auction, and tracking changes |
+| product-catalogue-data-quality-audit | catalog | Find missing, duplicate, conflicting, and malformed catalogue data |
+| product-attribute-normalizer | catalog | Normalize attributes with source traceability and explicit conversion rules |
+| product-variant-architecture | catalog | Design variant parent/child structures and valid option combinations |
+| product-image-asset-brief | content | Specify accurate product imagery, asset coverage, and visual QA |
+| product-description-fact-check | catalog | Validate listing claims against approved product specifications |
+| warehouse-slotting-review | operations | Assess SKU placement, velocity, space, and handling constraints |
+| order-exception-diagnostic | operations | Diagnose order lifecycle failures, handoffs, and stuck states |
+| fulfilment-capacity-planner | operations | Compare forecast workload against labour, station, and carrier capacity |
+
+Pack v4 introduces deterministic contribution-margin waterfall, customer acquisition cost,
+and cohort contribution LTV calculations. Their values are computed server-side with
+Decimal arithmetic and returned in the run's \`calculations\` field; the model receives
+the same values for explanation. CAC allocation, cohort definitions, and margin inputs
+remain operator-supplied assumptions.
