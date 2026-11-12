@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime
-from uuid import uuid4
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
