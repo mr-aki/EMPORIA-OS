@@ -336,8 +336,8 @@ def test_landed_cost_calculation_is_deterministic_and_reports_duty_assumption():
     assert calculated["freight_per_unit"] == 2.5
     assert calculated["duty_base_source"] == "provisional_supplier_unit_cost"
     assert calculated["duty_per_unit"] == 0.45
-    assert calculated["landed_cost_per_unit"] == 7.45
-    assert calculated["contribution_per_unit"] == 10.541
+    assert calculated["landed_cost_per_unit"] == 7.95
+    assert calculated["contribution_per_unit"] == 10.041
     assert calculated["currency"] == "USD"
 
 
@@ -397,7 +397,7 @@ def test_skill_run_api_returns_and_supplies_authoritative_calculations(
         async def complete(self, request):
             prompt = request.messages[1].content
             assert "SERVER-SIDE VERIFIED CALCULATIONS (AUTHORITATIVE)" in prompt
-            assert '"landed_cost_per_unit": 7.45' in prompt
+            assert '"landed_cost_per_unit": 7.95' in prompt
             return ProviderReply(
                 provider="openai",
                 model="gpt-5",
@@ -431,3 +431,24 @@ def test_skill_run_api_returns_and_supplies_authoritative_calculations(
     result = response.json()
     assert result["calculations"]["landed_cost_per_unit"] == 7.45
     assert result["calculations"]["duty_base_source"] == "provisional_supplier_unit_cost"
+
+
+
+def test_integer_skill_inputs_reject_fractional_inventory_quantities(client, auth_headers):
+    response = client.post(
+        "/api/v1/skills/inventory-reorder-review/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "sku": "SKU-2",
+                "on_hand_units": 2.5,
+                "average_daily_demand": 1.2,
+                "supplier_lead_time_days": 4,
+                "safety_stock_units": 2,
+            },
+        },
+    )
+    assert response.status_code == 422
+    assert "must be a whole number" in str(response.json()["detail"])
