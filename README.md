@@ -81,6 +81,8 @@ Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.m
 
 Emporia OS is distributed under the [Apache License 2.0](LICENSE). Third-party services, models, integrations, dependencies, and contributed assets remain subject to their own terms and licenses.
 
+**Usage cost ledger:** workspace owners/admins can set explicit USD per-million-token rates by provider/model. Agent and skill runs snapshot rates and persist Decimal-based usage estimates; unknown prices remain unpriced. See [API documentation](apps/api/README.md) for endpoints and accounting limits.
+
 <div align="center">
 
 **Build with evidence. Delegate with boundaries. Operate with confidence.**

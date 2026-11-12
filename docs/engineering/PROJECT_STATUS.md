@@ -36,6 +36,7 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | FX reference rates | implemented | Keyless Frankfurter daily rate client with latest/historical lookup, in-process caching, Decimal conversion, request validation, and workspace audit events |
 | Commerce skills | implemented | 60 versioned advisory skills across four implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, audit events, and required-output section/body evaluation |
 | Action governance | implemented | Four allow-listed commerce proposal types, typed validation, separate owner/admin approval, requester separation-of-duties, owner-managed existing-user onboarding, cancellation, workspace audit/idempotency, and fail-closed execution gate; no external executors registered |
+| Workspace model cost ledger | implemented | Owner/admin-configured per-workspace provider/model USD rates, immutable per-run price snapshots, Decimal cost estimates, date-filtered daily/provider/model reports, explicit priced/unpriced counts; usage estimates only, not invoices or spend caps |
 | Durable background execution | implemented | PostgreSQL-backed workspace-scoped jobs; idempotent enqueue/list/get/cancel; atomic claims, bounded retries, lease recovery and periodic lease renewal; current account and membership are revalidated before dispatch; separate worker container; only advisory agent/skill handlers are available |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
@@ -107,3 +108,8 @@ has no browser, shell, payment, order, store-admin, or other external business-a
 The queue is implemented and CI-tested, but it is not a workflow scheduler or multi-agent
 orchestrator. The first version still needs deployment-specific load, failure-recovery, and
 operational monitoring evidence before production readiness can be claimed.
+
+
+## Workspace model cost ledger
+
+The API stores operator-configured input/output prices per provider/model and snapshots them on new agent and skill runs. Decimal settlement occurs only when both provider-reported token counters are present. Price edits do not rewrite history. Workspace-scoped reports expose daily and provider/model breakdowns and keep unknown costs unpriced. These estimates do not cover general chat, research/search, provider invoices, or external charges and are not a spend cap.

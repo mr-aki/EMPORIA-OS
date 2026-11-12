@@ -459,3 +459,17 @@ The API includes a workspace-scoped approval workflow for allow-listed commerce 
 The allow-list currently covers product catalogue updates, inventory adjustments, campaign publication, and order refunds. Proposal inputs have strict field validation, a 16 KB payload ceiling, recursive secret-field rejection, workspace-unique idempotency, and audit events. Owner-only team onboarding can add an already registered account to the current workspace as an admin, operator, or viewer; it is not an email invitation flow.
 
 All current catalogue entries report `executor_available=false`. Approving a request does not modify any live store, inventory, campaign, order, payment method, or customer record. A future external adapter must be separately reviewed for scopes, idempotency, preconditions, budget limits, dry-run behavior, verification, observability, and compensation before it can be enabled.
+
+
+## Workspace model pricing and cost estimates
+
+Workspace owners and admins can manage explicit model prices using the following authenticated endpoints:
+
+- `GET /api/v1/usage/pricing` — list configured rates for the current workspace.
+- `PUT /api/v1/usage/pricing/{provider}/{model}` — set input and output USD rates per one million tokens.
+- `DELETE /api/v1/usage/pricing/{provider}/{model}` — remove a rate for future runs.
+- `GET /api/v1/usage/costs` — retrieve estimated cost totals and breakdowns.
+
+Each new agent or skill run snapshots its configured rates before provider execution. Subsequent pricing edits do not rewrite prior run snapshots. Costs use Decimal arithmetic and provider-reported prompt and completion token counts; missing rates or either missing counter remain explicitly unpriced. The cost endpoint supports inclusive UTC `start_date` and `end_date` filters and reports totals by execution type, provider/model, and day, including priced and unpriced run counts.
+
+**Accounting boundary:** these are operator-configured usage estimates in USD, not provider invoices, accounting-grade charges, or a spend cap. General chat, web research/search charges, taxes, discounts, contractual adjustments, and external fees are not included.
