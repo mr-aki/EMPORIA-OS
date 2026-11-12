@@ -333,14 +333,13 @@ def test_only_workspace_owners_and_admins_can_change_model_prices(
     )
     assert registration.status_code == 201
     token = registration.json()["access_token"]
-    from emporia_api.auth import Principal
     from emporia_api.database import SessionLocal
     from emporia_api.models import WorkspaceMembership
 
     with SessionLocal() as session:
         membership = session.query(WorkspaceMembership).filter_by(
-            user_id=registration.json()["user"]["id"],
-            workspace_id=registration.json()["workspace"]["id"],
+            user_id=registration.json()["user_id"],
+            workspace_id=registration.json()["workspace_id"],
         ).one()
         membership.role = "viewer"
         session.commit()
