@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
+    brave_search_api_key: SecretStr | None = None
     openai_compatible_base_url: str | None = None
     openai_compatible_api_key: SecretStr | None = None
 
