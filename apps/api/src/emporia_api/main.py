@@ -692,7 +692,6 @@ def list_registered_skills(
 
 @app.get("/api/v1/skills/{skill_id}", response_model=SkillRead, tags=["skills"])
 def get_registered_skill(skill_id: str, actor: AuthDep):
-    require_write_access(actor)
     skill = get_skill(skill_id)
     if skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -712,6 +711,7 @@ async def execute_skill(
     actor: AuthDep,
 ):
     """Execute a bounded advisory procedure through the configured model gateway."""
+    require_write_access(actor)
     skill = get_skill(skill_id)
     if skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
