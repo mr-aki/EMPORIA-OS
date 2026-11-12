@@ -32,7 +32,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0008_business_action_requests"
+        assert revision == "0010_workspace_model_costs"
         assert {"idempotency_key", "request_fingerprint"}.issubset(
             {column["name"] for column in inspector.get_columns("agent_runs")}
         )
@@ -48,6 +48,25 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         assert "workspace_output_token_budgets" in inspector.get_table_names()
         assert "background_jobs" in inspector.get_table_names()
         assert "business_action_requests" in inspector.get_table_names()
+        assert "workspace_model_prices" in inspector.get_table_names()
+        assert "uq_workspace_model_price_provider_model" in {
+            item["name"]
+            for item in inspector.get_unique_constraints("workspace_model_prices")
+        }
+        assert "ix_workspace_model_prices_workspace_id" in {
+            item["name"] for item in inspector.get_indexes("workspace_model_prices")
+        }
+        assert "evaluation_json" in {
+            column["name"] for column in inspector.get_columns("skill_runs")
+        }
+        for table_name in ("agent_runs", "skill_runs"):
+            assert {
+                "input_price_usd_per_million_tokens",
+                "output_price_usd_per_million_tokens",
+                "estimated_cost_usd",
+            }.issubset(
+                {column["name"] for column in inspector.get_columns(table_name)}
+            )
         assert {"action_type", "status", "requested_by", "approved_by", "inputs_json"}.issubset(
             {column["name"] for column in inspector.get_columns("business_action_requests")}
         )
@@ -154,6 +173,10 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "workspaces" in inspector.get_table_names()
         assert "workspace_memberships" in inspector.get_table_names()
         assert "business_action_requests" in inspector.get_table_names()
+        assert "workspace_model_prices" in inspector.get_table_names()
+        assert "evaluation_json" in {
+            column["name"] for column in inspector.get_columns("skill_runs")
+        }
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
         }
