@@ -104,11 +104,16 @@ The gateway does not execute model-generated tools or business actions. Autonomo
 
 ## Specialist agent runtime
 
-Three reviewed specialist definitions are currently registered:
+Eight reviewed specialist definitions are currently registered and share the authenticated, persisted agent-run execution path:
 
 - `commerce-strategist`: business model, positioning, validation strategy, and launch decisions.
 - `product-research-analyst`: opportunity assessment, customer problems, evidence quality, and assortment risk.
-- `growth-marketing-planner`: channel strategy, funnel design, creative experiments, and retention planning.
+- `growth-marketing-planner`: channel strategy, funnel design, and measurable acquisition experiments.
+- `pricing-unit-economics-analyst`: price floors, contribution margin, break-even analysis, and scenario modelling.
+- `supplier-sourcing-analyst`: sourcing briefs, RFQs, supplier due diligence, quality planning, and landed-cost inputs.
+- `customer-voice-analyst`: customer feedback themes, evidence traceability, journey friction, and prioritised fixes.
+- `marketplace-listing-optimizer`: product listings, marketplace SEO, merchandising briefs, and claim checks.
+- `retention-lifecycle-specialist`: activation, post-purchase, repeat-purchase, loyalty, and win-back journeys.
 
 Authenticated endpoints:
 
@@ -131,9 +136,11 @@ curl -X POST http://localhost:8000/api/v1/agents/commerce-strategist/runs \\
   }'
 ```
 
-Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. A run is marked failed when its provider is not configured or the upstream provider rejects/fails the request.
+Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. Known upstream failures and unexpected research/provider exceptions transition the run to a terminal failed state; unexpected exception details are not returned to API clients.
 
-**Execution boundary:** these first agents are advisory text agents. They do not have browser access, shell access, store-admin credentials, payment access, or action tools. They cannot autonomously change a live business. The next runtime milestones are queued/background execution, scoped tool grants, human approval gates, budget enforcement, and sandboxed integrations.
+**Agent contract:** `GET /api/v1/agents` also returns each specialist's category, expected deliverables, required context, version, and expertise. Internal system prompts remain private. All eight specialists execute through the same provider and run-history pipeline; newly added specialists are covered by endpoint-level execution tests.
+
+**Execution boundary:** these agents are advisory text agents. They do not have browser access, shell access, store-admin credentials, payment access, or action tools. They cannot autonomously change a live business. The next runtime milestones are queued/background execution, scoped tool grants, human approval gates, budget enforcement, and sandboxed integrations.
 
 
 ## Network research connector
@@ -181,3 +188,36 @@ curl -X POST http://localhost:8000/api/v1/agents/product-research-analyst/runs \
 The response contains source URLs, titles, hostnames, excerpts, and available page-age metadata. Agent run history stores the selected source evidence alongside the output so results can be reviewed later. Retrieved page text is untrusted external data; it is passed to the model as reference context, not as system instructions.
 
 **External dependency:** a valid Brave Search API key and active API entitlement are required for live searches. CI uses mocked HTTP responses and does not consume paid API requests. Respect the provider's quotas and rate limits. Search results are evidence to evaluate, not a guarantee that every source is accurate or authoritative.
+
+
+## Skill catalog and execution
+
+The first commerce skill pack contains 15 versioned advisory procedures. Skills are not
+permission grants: the runtime does not browse supplied URLs, call store APIs, send supplier
+messages, change prices, place orders, or launch campaigns.
+
+Authenticated endpoints:
+- GET /api/v1/skills — list metadata and input contracts.
+- GET /api/v1/skills?domain=sourcing — filter by domain.
+- GET /api/v1/skills/{skill_id} — inspect a skill contract.
+- POST /api/v1/skills/{skill_id}/runs — execute through a configured AI provider.
+- GET /api/v1/skill-runs and GET /api/v1/skill-runs/{run_id} — review run history.
+
+Example request body:
+
+    {
+      "provider": "openai",
+      "model": "gpt-5",
+      "inputs": {
+        "market": "Reusable home storage",
+        "geography": "United Kingdom",
+        "target_customer": "Renters in small urban apartments"
+      },
+      "max_tokens": 1800
+    }
+
+Each skill rejects unknown inputs and validates required fields and types before calling a
+provider. Runs persist skill version, input data, result, provider usage, status, and
+timestamps. Start/completion/failure events are written to the audit log; history is
+workspace-scoped. Input values are untrusted data and cannot grant permissions or override
+the skill procedure. See ../../skills/README.md for the catalog and governance boundaries.
