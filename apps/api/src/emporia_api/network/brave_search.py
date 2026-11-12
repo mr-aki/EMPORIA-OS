@@ -70,8 +70,8 @@ class BraveSearchClient:
         normalized_query = query.strip()
         if not normalized_query or len(normalized_query) > 600:
             raise ValueError("Search query must contain 1 to 600 characters")
-        if not 1000 <= maximum_number_of_tokens <= 8192:
-            raise ValueError("Search context budget must be between 1000 and 8192 tokens")
+        if not 1024 <= maximum_number_of_tokens <= 8192:
+            raise ValueError("Search context budget must be between 1024 and 8192 tokens")
 
         key = self._secret(self.config.brave_search_api_key)
         headers = {
@@ -101,15 +101,15 @@ class BraveSearchClient:
             raise ResearchRequestError(f"Brave Search returned HTTP {response.status_code}")
         try:
             payload = response.json()
-            generic = payload.get("grounding", {}).get("generic", [])
-            source_metadata = payload.get("sources", {})
+            generic = (payload.get("grounding") or {}).get("generic") or []
+            source_metadata = payload.get("sources") or {}
             sources: list[ResearchSource] = []
             for item in generic:
                 url = item.get("url")
                 if not isinstance(url, str) or not url.startswith(("https://", "http://")):
                     continue
-                metadata = source_metadata.get(url, {})
-                snippets = item.get("snippets", [])
+                metadata = source_metadata.get(url) or {}
+                snippets = item.get("snippets") or []
                 sources.append(ResearchSource(
                     index=len(sources) + 1,
                     url=url,
@@ -122,7 +122,7 @@ class BraveSearchClient:
                     ),
                     age=tuple(
                         str(value)[:100]
-                        for value in (metadata.get("age") or [])[:4]
+                        for value in ((metadata.get("age") if isinstance(metadata.get("age"), list) else [metadata.get("age")]) or [])[:4]
                         if isinstance(value, str)
                     ),
                 ))
