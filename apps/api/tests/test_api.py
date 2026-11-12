@@ -396,7 +396,7 @@ def test_workspace_membership_is_rechecked_and_viewers_cannot_write(client, auth
     assert denied.status_code == 403
 
 
-def test_login_does_not_disclose_whether_email_exists(client):
+def test_login_does_not_disclose_whether_email_exists(client, auth_headers):
     wrong_password = client.post(
         "/api/v1/auth/login",
         json={"email": "missing@example.local", "password": "wrong-password"},
@@ -405,9 +405,10 @@ def test_login_does_not_disclose_whether_email_exists(client):
 
     wrong_password_existing = client.post(
         "/api/v1/auth/login",
-        json={"email": "missing@example.local", "password": "wrong-password"},
+        json={"email": "test@example.local", "password": "wrong-password"},
     )
     assert wrong_password_existing.status_code == 401
+    assert wrong_password_existing.json()["detail"] == wrong_password.json()["detail"]
 
 
 def test_registration_can_be_disabled(client, monkeypatch):
