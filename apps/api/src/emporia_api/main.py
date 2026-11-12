@@ -56,8 +56,8 @@ from emporia_api.output_budgets import (
     enforce_workspace_output_budget,
 )
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
-from emporia_api.research.report import build_research_report
 from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
+from emporia_api.research.report import build_research_report
 from emporia_api.schemas import (
     AgentJobCreate,
     AgentRead,
