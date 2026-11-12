@@ -973,3 +973,38 @@ def test_background_job_cancel_is_workspace_scoped(client, auth_headers, monkeyp
         ).status_code == 404
     finally:
         settings.workspace_id = original_workspace
+
+
+def test_valid_skill_job_is_queued_with_registered_skill_contract(
+    client, auth_headers, monkeypatch
+):
+    class ConfiguredGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", ConfiguredGateway())
+    response = client.post(
+        "/api/v1/jobs",
+        headers=auth_headers,
+        json={
+            "kind": "skill",
+            "skill_id": "market-opportunity-scan",
+            "payload": {
+                "provider": "openai",
+                "model": "gpt-5",
+                "inputs": {
+                    "market": "Compact home storage products",
+                    "geography": "Pakistan",
+                    "target_customer": "Renters in small city apartments",
+                },
+            },
+            "max_attempts": 2,
+        },
+    )
+
+    assert response.status_code == 201
+    job = response.json()
+    assert job["kind"] == "skill"
+    assert job["target_id"] == "market-opportunity-scan"
+    assert job["status"] == "queued"
+    assert job["max_attempts"] == 2
