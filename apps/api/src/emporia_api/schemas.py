@@ -97,6 +97,9 @@ class AgentRead(BaseModel):
     version: str
     mission: str
     expertise: list[str]
+    category: str
+    deliverables: list[str]
+    required_context: list[str]
     tools_enabled: bool = False
 
 

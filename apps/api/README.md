@@ -104,11 +104,16 @@ The gateway does not execute model-generated tools or business actions. Autonomo
 
 ## Specialist agent runtime
 
-Three reviewed specialist definitions are currently registered:
+Eight reviewed specialist definitions are currently registered and share the authenticated, persisted agent-run execution path:
 
 - `commerce-strategist`: business model, positioning, validation strategy, and launch decisions.
 - `product-research-analyst`: opportunity assessment, customer problems, evidence quality, and assortment risk.
-- `growth-marketing-planner`: channel strategy, funnel design, creative experiments, and retention planning.
+- `growth-marketing-planner`: channel strategy, funnel design, and measurable acquisition experiments.
+- `pricing-unit-economics-analyst`: price floors, contribution margin, break-even analysis, and scenario modelling.
+- `supplier-sourcing-analyst`: sourcing briefs, RFQs, supplier due diligence, quality planning, and landed-cost inputs.
+- `customer-voice-analyst`: customer feedback themes, evidence traceability, journey friction, and prioritised fixes.
+- `marketplace-listing-optimizer`: product listings, marketplace SEO, merchandising briefs, and claim checks.
+- `retention-lifecycle-specialist`: activation, post-purchase, repeat-purchase, loyalty, and win-back journeys.
 
 Authenticated endpoints:
 
@@ -133,7 +138,9 @@ curl -X POST http://localhost:8000/api/v1/agents/commerce-strategist/runs \\
 
 Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. A run is marked failed when its provider is not configured or the upstream provider rejects/fails the request.
 
-**Execution boundary:** these first agents are advisory text agents. They do not have browser access, shell access, store-admin credentials, payment access, or action tools. They cannot autonomously change a live business. The next runtime milestones are queued/background execution, scoped tool grants, human approval gates, budget enforcement, and sandboxed integrations.
+**Agent contract:** `GET /api/v1/agents` also returns each specialist's category, expected deliverables, required context, version, and expertise. Internal system prompts remain private. All eight specialists execute through the same provider and run-history pipeline; newly added specialists are covered by endpoint-level execution tests.
+
+**Execution boundary:** these agents are advisory text agents. They do not have browser access, shell access, store-admin credentials, payment access, or action tools. They cannot autonomously change a live business. The next runtime milestones are queued/background execution, scoped tool grants, human approval gates, budget enforcement, and sandboxed integrations.
 
 
 ## Network research connector
