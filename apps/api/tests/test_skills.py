@@ -181,3 +181,76 @@ def test_skill_routes_require_authentication(client):
         "/api/v1/skills/market-opportunity-scan/runs",
         json={"provider": "openai", "model": "gpt-5", "inputs": MARKET_INPUTS},
     ).status_code == 401
+
+
+
+def test_optional_empty_skill_inputs_are_allowed(client, auth_headers):
+    response = client.post(
+        "/api/v1/skills/competitor-teardown/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "brand": "Northstar",
+                "market": "Home storage",
+                "competitors": ["Brand A"],
+                "observed_evidence": {},
+            },
+        },
+    )
+    # The empty optional object is valid; this 503 is only because no live provider key is configured.
+    assert response.status_code == 503
+    assert response.json()["detail"] == "openai is not configured on this server"
+
+
+def test_skill_numeric_constraints_reject_impossible_rates_and_counts(client, auth_headers):
+    invalid_duty = client.post(
+        "/api/v1/skills/landed-cost-margin-analysis/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "currency": "USD",
+                "units_per_shipment": 100,
+                "supplier_unit_cost": 4.5,
+                "freight_total": 250,
+                "duty_rate_percent": 125,
+                "other_costs_per_unit": 0.5,
+                "selling_price": 19.99,
+            },
+        },
+    )
+    assert invalid_duty.status_code == 422
+    assert "must be at most 100" in str(invalid_duty.json()["detail"])
+
+    invalid_stock = client.post(
+        "/api/v1/skills/inventory-reorder-review/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "sku": "SKU-1",
+                "on_hand_units": -3,
+                "average_daily_demand": 4,
+                "supplier_lead_time_days": 10,
+                "safety_stock_units": 5,
+            },
+        },
+    )
+    assert invalid_stock.status_code == 422
+    assert "must be at least 0" in str(invalid_stock.json()["detail"])
+
+
+def test_numeric_bounds_are_returned_in_skill_input_contract(client, auth_headers):
+    response = client.get(
+        "/api/v1/skills/landed-cost-margin-analysis",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    inputs = {item["key"]: item for item in response.json()["inputs"]}
+    assert inputs["duty_rate_percent"]["minimum"] == 0
+    assert inputs["duty_rate_percent"]["maximum"] == 100
+    assert inputs["units_per_shipment"]["minimum"] == 1
