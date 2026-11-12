@@ -106,8 +106,8 @@ class BraveSearchClient:
         normalized_query = query.strip()
         if not normalized_query or len(normalized_query) > 600:
             raise ValueError("Search query must contain 1 to 600 characters")
-        if not 1024 <= maximum_number_of_tokens <= 8192:
-            raise ValueError("Search context budget must be between 1024 and 8192 tokens")
+        if not 1024 <= maximum_number_of_tokens <= 32768:
+            raise ValueError("Search context budget must be between 1024 and 32768 tokens")
 
         normalized_country = country.strip().upper()
         normalized_language = search_lang.strip().lower()
