@@ -1,89 +1,72 @@
 # Project status
 
 **Product:** Emporia OS  
-**Repository:** `mr-aki/EMPORIA-OS`  
+**Repository:** mr-aki/EMPORIA-OS  
 **License:** Apache-2.0  
-**Release stage:** Executable backend foundation (early development; not production-ready)
+**Release stage:** Executable backend foundation — not production-ready
 
-Emporia OS is an open-source, self-hostable, AI-provider-independent operating system for planning and operating commerce businesses. The current repository contains a working backend foundation and advisory agent runtime. The broader commerce operating system remains under active development.
+Emporia OS is an open-source, self-hostable, AI-provider-independent operating system for planning and operating commerce businesses. The current implementation is a real backend foundation; the broader commerce workspace and user experience are still being built.
 
 ## Status semantics
 
 | State | Meaning |
 |---|---|
-| `specified` | Requirements and contracts exist; no implementation is claimed. |
-| `implemented` | Source code exists and relevant unit tests pass. |
-| `integrated` | The component is connected to its real dependencies and exercised end-to-end. |
-| `evaluated` | Quality, behavior, and failure cases have measurable evaluation evidence. |
-| `security_reviewed` | Threats, permissions, data handling, and relevant security tests have been reviewed. |
-| `production_ready` | Operational, security, reliability, backup/restore, and release gates have passed for a stated deployment profile. |
+| specified | Requirements and contracts exist; no implementation is claimed. |
+| implemented | Source code exists and relevant automated tests cover its behavior. |
+| integrated | The component is connected to its real dependencies and exercised end-to-end. |
+| evaluated | Quality, behavior, and failure cases have measurable evaluation evidence. |
+| security_reviewed | Threats, permissions, data handling, and relevant security tests have been reviewed. |
+| production_ready | Operational, security, reliability, backup/restore, and release gates have passed for a stated deployment profile. |
 
-A document, prompt, registry entry, mock, or UI control is not proof that a capability is implemented. Passing unit tests with mocked upstream services is not proof of live-provider reliability or production readiness.
+A document, prompt, registry entry, mock, or UI control is not proof that a capability is implemented. Passing unit tests alone does not prove production readiness.
 
-## Verified implementation
+## Implemented backend capabilities
 
-| Capability | Current state | Evidence and boundary |
+| Capability | State | Evidence and limits |
 |---|---|---|
-| FastAPI service and health endpoints | `implemented` | Liveness and database readiness endpoints; CI test suite. |
-| Venture CRUD and workspace scoping | `implemented` | Authenticated CRUD with workspace ID controlled by server configuration. |
-| Application audit trail | `implemented` | Database-backed audit events for current API mutations and agent execution. |
-| AI provider gateway | `implemented` | OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible adapters; HTTP adapter tests use mocked transports. |
-| Advisory specialist runtime | `implemented` | Eight versioned specialist definitions, authenticated run endpoint, persisted status/output/token usage, audit events, and terminal failure handling for unexpected research/provider exceptions. |
-| Explicit network research | `implemented` | Brave Search LLM Context API adapter; callers must provide a separate research query. Live use requires a server-side Brave API key. |
-| Automated API checks | `implemented` | GitHub Actions workflow runs Ruff and pytest on Python 3.12. |
+| API foundation | implemented | FastAPI app, health endpoints, venture CRUD, request validation, SQLAlchemy persistence |
+| Identity | implemented | Password hashing, JWT access tokens, account registration/login, active-user checks |
+| Workspace isolation | implemented | Server-derived workspace identity, membership re-check on authenticated requests, owner/admin/operator write roles, viewer read-only behavior |
+| Database migrations | implemented | Alembic migration for fresh databases and compatibility with the earlier venture/audit/agent-run schema; tests cover fresh and legacy database upgrades |
+| Audit events | implemented | Persistent event records for venture changes, AI calls, agent runs, research calls, and workspace creation |
+| AI provider gateway | implemented | OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible adapters; upstream HTTP contracts are tested with mocks |
+| Specialist agent runtime | implemented | Eight versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
+| Network research | implemented | Explicit Brave Search connector, bounded regional search requests, source metadata, response validation, rate-limit mapping, and untrusted external-context handling |
+| FX reference rates | implemented | Keyless Frankfurter daily rate client with latest/historical lookup, in-process caching, Decimal conversion, request validation, and workspace audit events |
+| Commerce skills | implemented | 30 versioned advisory skills across two implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, and audit events |
 
-## Current specialist workforce
+The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
 
-All eight specialists use the same provider-backed execution and run-history pipeline:
+## Security and operational boundaries
 
-1. `commerce-strategist` — business model, positioning, validation, and launch gates.
-2. `product-research-analyst` — product opportunities, customer problems, competition, and evidence quality.
-3. `growth-marketing-planner` — acquisition, funnel, creative experiments, and measurement.
-4. `pricing-unit-economics-analyst` — price architecture, cost stack, contribution margin, and break-even.
-5. `supplier-sourcing-analyst` — sourcing briefs, RFQs, supplier checks, quality planning, and landed cost.
-6. `customer-voice-analyst` — review and feedback themes, journey friction, and evidence-linked insights.
-7. `marketplace-listing-optimizer` — listing copy, product attributes, marketplace SEO, and claim checks.
-8. `retention-lifecycle-specialist` — activation, post-purchase, repeat purchase, loyalty, and win-back journeys.
+- Account registration is disabled by default. Operators must explicitly enable it for controlled provisioning.
+- JWTs are checked against the current active user and current workspace membership on each authenticated request; removing membership invalidates an existing token for that workspace.
+- Clients cannot select a tenant by sending an arbitrary workspace header or request-body field.
+- Passwords are hashed; API keys remain server-side secrets and are not returned by provider catalogue responses.
+- The legacy static bearer token is accepted only in development mode. Production deployments must use JWT authentication and a strong JWT signing secret.
+- The current identity layer does not yet provide email verification, MFA, password reset, refresh-token rotation, login throttling, or workspace invitations.
+- Agent models have no action tools. Commerce actions, permission grants, approval records, budgets, sandboxing, and revocation enforcement must be implemented before enabling external actions.
+- Live external API behavior depends on operator-supplied credentials and the terms, rate limits, and quotas of each provider.
 
-The API exposes public metadata (category, expertise, expected deliverables, and required context) but does not expose private system prompts. The agents are advisory: no browser, shell, store-admin, payment, CRM-send, or other consequential action tools are granted.
+## Not implemented
 
-## Not yet implemented
-
-- Dashboard and operator-facing workspace UI.
-- Multi-user authentication, workspace membership, and role-based access control.
-- Durable background queue, worker processes, cancellation, and stale-run recovery.
-- Per-agent and per-workspace cost budgets, rate limits, quotas, and idempotency controls.
-- Scoped tool grants, sandboxed execution, approval records, and human-in-the-loop action gates.
-- Live commerce platform connectors and verified read/write workflows.
-- Database migration and backup/restore automation.
-- Production observability, deployment hardening, and recovery procedures.
-- Agent quality evaluation datasets and repeatable model/provider evaluation runs.
-
-## Next engineering sequence
-
-1. Finish agent execution hardening: budgets, quotas, idempotency, cancellation, and crash-safe recovery for process interruption.
-2. Add policy-governed read-only tools and evidence capture before any write-capable tools.
-3. Add explicit approval records and scoped write actions for low-risk commerce operations.
-4. Build the operator dashboard and connect it to the authenticated API.
-5. Add production identity, migrations, observability, backup/restore, and deployment gates.
+- Production frontend/dashboard and responsive operator workspace.
+- Direct Shopify, WooCommerce, Amazon, marketplace, payment, logistics, accounting, and CRM integrations.
+- Complete product, catalogue, supplier, purchase-order, inventory, fulfilment, customer-support, marketing, and finance domains.
+- Background task queue, workflow scheduler, multi-agent coordination, agent evaluation service, and durable retry/dead-letter handling.
+- Permissioned action-tool registry, human approval flows, spend controls, and execution sandbox.
+- Team invitations and full identity lifecycle features.
+- Production hardening evidence: threat model, independent security review, rate limiting, backup/restore drills, monitoring/alerting, load tests, disaster recovery, and a deployment-specific release gate.
 
 ## Engineering principle
 
-Prefer a small end-to-end capability that is real, testable, observable, and safe over a large catalogue of unconnected specifications. Every capability must advance through the lifecycle only when its evidence exists.
+Prefer a small end-to-end capability that is real, testable, observable, and safe over a large catalogue of unconnected specifications. Expand capability only with explicit contracts, ownership, tests, evaluation cases, and operational boundaries.
 
 ## Skills implementation slice
 
-The Skills runtime adds a versioned 30-skill commerce catalog across two reviewed implementation packs with typed input contracts,
+The Skills runtime adds a versioned 15-skill commerce pack with typed input contracts,
 unknown-field rejection, bounded payload validation, authenticated provider-backed
 execution, persisted workspace-scoped run history, and start/completion/failure audit
 events. Skills execute as advisory analysis only; they do not grant store, payment,
 supplier, advertising, fulfilment, or customer-action permissions. CI, evaluations, and
 security review remain release gates.
-
-
-The second Skills pack adds customer persona/JTBD analysis, brand positioning, portfolio
-and assortment planning, bundling, SEO/search-term audits, review mining, quality
-inspection planning, supplier continuity/quote analysis, stock aging, fulfilment
-economics, and promotional calendar planning. Each definition has a typed contract,
-ordered procedure, output schema headings, and explicit guardrails. Pack v2 remains
-advisory and requires its own CI and evaluation evidence before any production claim.
