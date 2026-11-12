@@ -1,5 +1,6 @@
 from emporia_api.config import settings
 
+
 class FakeGateway:
     def configured(self, provider):
         return provider == "openai"
