@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -35,10 +35,39 @@ class ProviderModelUsage(UsageTotals):
     model: str
 
 
+class DailyUsage(UsageTotals):
+    date: date
+
+
 class UsageSummary(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
     totals: UsageTotals
     by_execution_type: dict[str, UsageTotals]
     by_provider_model: list[ProviderModelUsage]
+    by_day: list[DailyUsage]
+
+
+def _date_scope(
+    run_model: Any,
+    workspace_id: str,
+    start_date: date | None,
+    end_date: date | None,
+):
+    scope = [run_model.workspace_id == workspace_id]
+    if start_date is not None:
+        scope.append(
+            run_model.created_at
+            >= datetime.combine(start_date, time.min, tzinfo=UTC)
+        )
+    if end_date is not None:
+        scope.append(
+            run_model.created_at
+            < datetime.combine(
+                end_date + timedelta(days=1), time.min, tzinfo=UTC
+            )
+        )
+    return scope
 
 
 def _aggregate(
@@ -46,19 +75,21 @@ def _aggregate(
     run_model: Any,
     workspace_id: str,
     execution_type: str,
-) -> tuple[UsageTotals, list[ProviderModelUsage]]:
-    scope = run_model.workspace_id == workspace_id
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[UsageTotals, list[ProviderModelUsage], list[DailyUsage]]:
+    scope = _date_scope(run_model, workspace_id, start_date, end_date)
     total_row = session.execute(
         select(
             func.count(run_model.id),
             func.coalesce(func.sum(run_model.prompt_tokens), 0),
             func.coalesce(func.sum(run_model.completion_tokens), 0),
             func.coalesce(func.sum(run_model.total_tokens), 0),
-        ).where(scope)
+        ).where(*scope)
     ).one()
     status_rows = session.execute(
         select(run_model.status, func.count(run_model.id))
-        .where(scope)
+        .where(*scope)
         .group_by(run_model.status)
     ).all()
     statuses = {status: count for status, count in status_rows}
@@ -76,38 +107,106 @@ def _aggregate(
         select(
             run_model.provider,
             run_model.model,
+            run_model.status,
             func.count(run_model.id),
-            func.sum(run_model.prompt_tokens),
-            func.sum(run_model.completion_tokens),
-            func.sum(run_model.total_tokens),
+            func.coalesce(func.sum(run_model.prompt_tokens), 0),
+            func.coalesce(func.sum(run_model.completion_tokens), 0),
+            func.coalesce(func.sum(run_model.total_tokens), 0),
         )
-        .where(scope)
-        .group_by(run_model.provider, run_model.model)
-        .order_by(run_model.provider, run_model.model)
+        .where(*scope)
+        .group_by(run_model.provider, run_model.model, run_model.status)
+        .order_by(run_model.provider, run_model.model, run_model.status)
     ).all()
+    grouped: dict[tuple[str, str], dict[str, int]] = {}
+    for provider, model, status, count, prompt, completion, total in grouped_rows:
+        row = grouped.setdefault(
+            (provider, model),
+            {
+                "runs": 0,
+                "completed_runs": 0,
+                "failed_runs": 0,
+                "running_runs": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            },
+        )
+        row["runs"] += count
+        status_key = f"{status}_runs"
+        if status_key in row:
+            row[status_key] += count
+        row["prompt_tokens"] += prompt
+        row["completion_tokens"] += completion
+        row["total_tokens"] += total
     breakdown = [
         ProviderModelUsage(
             execution_type=execution_type,
-            provider=row[0],
-            model=row[1],
-            runs=row[2],
-            prompt_tokens=row[3] or 0,
-            completion_tokens=row[4] or 0,
-            total_tokens=row[5] or 0,
+            provider=provider,
+            model=model,
+            **values,
         )
-        for row in grouped_rows
+        for (provider, model), values in grouped.items()
     ]
-    return totals, breakdown
+
+    daily_rows = session.execute(
+        select(
+            func.date(run_model.created_at),
+            run_model.status,
+            func.count(run_model.id),
+            func.coalesce(func.sum(run_model.prompt_tokens), 0),
+            func.coalesce(func.sum(run_model.completion_tokens), 0),
+            func.coalesce(func.sum(run_model.total_tokens), 0),
+        )
+        .where(*scope)
+        .group_by(func.date(run_model.created_at), run_model.status)
+    ).all()
+    daily_map: dict[date, dict[str, int]] = {}
+    for day_value, status, count, prompt, completion, total in daily_rows:
+        day = date.fromisoformat(str(day_value)[:10])
+        values = daily_map.setdefault(
+            day,
+            {
+                "runs": 0,
+                "completed_runs": 0,
+                "failed_runs": 0,
+                "running_runs": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            },
+        )
+        values["runs"] += count
+        status_key = f"{status}_runs"
+        if status_key in values:
+            values[status_key] += count
+        values["prompt_tokens"] += prompt
+        values["completion_tokens"] += completion
+        values["total_tokens"] += total
+    daily = [
+        DailyUsage(date=day, **values)
+        for day, values in sorted(daily_map.items())
+    ]
+    return totals, breakdown, daily
 
 
 @router.get("/summary", response_model=UsageSummary)
-def get_usage_summary(session: SessionDep, actor: AuthDep) -> UsageSummary:
-    """Return persisted agent and skill token usage for the authenticated workspace only."""
-    agent_totals, agent_breakdown = _aggregate(
-        session, AgentRun, actor.workspace_id, "agent"
+def get_usage_summary(
+    session: SessionDep,
+    actor: AuthDep,
+    start_date: Annotated[date | None, Query()] = None,
+    end_date: Annotated[date | None, Query()] = None,
+) -> UsageSummary:
+    """Return workspace-scoped token usage, optionally filtered by inclusive UTC dates."""
+    if start_date is not None and end_date is not None and end_date < start_date:
+        raise HTTPException(
+            status_code=422, detail="end_date must be on or after start_date"
+        )
+
+    agent_totals, agent_breakdown, agent_daily = _aggregate(
+        session, AgentRun, actor.workspace_id, "agent", start_date, end_date
     )
-    skill_totals, skill_breakdown = _aggregate(
-        session, SkillRun, actor.workspace_id, "skill"
+    skill_totals, skill_breakdown, skill_daily = _aggregate(
+        session, SkillRun, actor.workspace_id, "skill", start_date, end_date
     )
     totals = UsageTotals(
         runs=agent_totals.runs + skill_totals.runs,
@@ -120,10 +219,27 @@ def get_usage_summary(session: SessionDep, actor: AuthDep) -> UsageSummary:
         ),
         total_tokens=agent_totals.total_tokens + skill_totals.total_tokens,
     )
+    daily_map: dict[date, UsageTotals] = {}
+    for item in agent_daily + skill_daily:
+        aggregate = daily_map.setdefault(item.date, UsageTotals())
+        aggregate.runs += item.runs
+        aggregate.completed_runs += item.completed_runs
+        aggregate.failed_runs += item.failed_runs
+        aggregate.running_runs += item.running_runs
+        aggregate.prompt_tokens += item.prompt_tokens
+        aggregate.completion_tokens += item.completion_tokens
+        aggregate.total_tokens += item.total_tokens
+    by_day = [
+        DailyUsage(date=day, **values.model_dump())
+        for day, values in sorted(daily_map.items())
+    ]
     return UsageSummary(
+        start_date=start_date,
+        end_date=end_date,
         totals=totals,
         by_execution_type={"agent": agent_totals, "skill": skill_totals},
         by_provider_model=agent_breakdown + skill_breakdown,
+        by_day=by_day,
     )
 
 
