@@ -12,6 +12,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 export EMPORIA_API_TOKEN="local-development-token-change-this"
+export EMPORIA_AUTO_CREATE_SCHEMA=true
 uvicorn emporia_api.main:app --reload
 ```
 
@@ -36,7 +37,7 @@ docker compose up --build
 
 All settings use the `EMPORIA_` prefix. The initial deployment model is one isolated workspace per API deployment. The workspace identifier is server-side configuration; clients cannot select another tenant by supplying a header or request field. Use a unique API token per deployment and terminate TLS at a trusted reverse proxy before exposing the service.
 
-SQLite is the zero-dependency local default. Set `EMPORIA_DATABASE_URL` to a PostgreSQL SQLAlchemy URL for a shared deployment; production migration management and multi-user identity are subsequent milestones, not claimed in this slice.
+SQLite is the zero-dependency local default. Set `EMPORIA_DATABASE_URL` to a PostgreSQL SQLAlchemy URL for a shared deployment and install the optional PostgreSQL driver with `pip install -e ".[postgres]"`. The initial deployment model remains one isolated workspace per API deployment; multi-user identity is separate work.
 
 ## API
 
@@ -275,3 +276,40 @@ curl -X POST http://localhost:8000/api/v1/finance/fx/convert \\
 Historical conversions can include a `date` field, for example `"date": "2025-12-31"`. Amounts and rates use decimal arithmetic. Latest observations are cached in-process for six hours; historical observations are cached for 24 hours. Responses preserve the actual observation date returned by the provider.
 
 **Important limitation:** these are daily reference mid-market rates, not live bank, processor, card-network, remittance, or settlement quotes. They exclude FX spreads, fees, taxes, and provider-specific contractual pricing. Use actual settlement statements for accounting and reconciliation. The provider's documentation says blended rates are free for commercial use, reference data is updated daily, and storing/caching rates is encouraged. Read the [provider FAQ and terms](https://frankfurter.dev/) before choosing a rate source for regulated reporting.
+
+
+## Database migrations and deployment
+
+Schema creation is now explicit:
+
+- `EMPORIA_AUTO_CREATE_SCHEMA=true` is allowed only when `EMPORIA_ENVIRONMENT` is `development` or `test`.
+- Production and other environments default to `EMPORIA_AUTO_CREATE_SCHEMA=false`; starting the API never runs DDL automatically.
+- Use Alembic to upgrade or downgrade schema versions. Run migrations once as a deployment step before starting or scaling API workers.
+
+For a new database, from the repository root:
+
+```bash
+export EMPORIA_ENVIRONMENT=production
+export EMPORIA_AUTO_CREATE_SCHEMA=false
+export EMPORIA_DATABASE_URL="postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME"
+cd apps/api
+pip install -e ".[postgres]"
+alembic upgrade head
+```
+
+With Docker Compose, set the production values in the deployment environment and run the one-off migration container before starting the API:
+
+```bash
+docker compose run --rm api alembic upgrade head
+docker compose up -d api
+```
+
+For an existing database previously initialized by SQLAlchemy `create_all`, **back it up first** and compare its tables/columns/indexes with `migrations/versions/0001_initial_schema.py`. If and only if that existing schema matches this baseline, mark it as already being at the baseline without recreating tables:
+
+```bash
+alembic stamp head
+```
+
+Then subsequent changes are applied using `alembic upgrade head`. Do not run the initial `upgrade head` against a populated legacy database that already has these tables but has not been stamped; it will attempt to create them again. The initial downgrade drops the four baseline tables and their data, so do not use downgrade as a routine rollback on a database with business data. Restore from a tested backup or use a forward corrective migration for production data.
+
+The baseline migration covers `ventures`, `audit_events`, `agent_runs`, and `skill_runs`, including their workspace indexes. Migration tests use isolated SQLite databases and verify upgrade, downgrade, and non-destructive stamping.

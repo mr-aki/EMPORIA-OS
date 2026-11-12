@@ -5,8 +5,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      EMPORIA_ENVIRONMENT: development
-      EMPORIA_DATABASE_URL: sqlite:////data/emporia.db
+      EMPORIA_ENVIRONMENT: ${EMPORIA_ENVIRONMENT:-development}
+      EMPORIA_AUTO_CREATE_SCHEMA: ${EMPORIA_AUTO_CREATE_SCHEMA:-true}
+      EMPORIA_DATABASE_URL: ${EMPORIA_DATABASE_URL:-sqlite:////data/emporia.db}
       EMPORIA_API_TOKEN: ${EMPORIA_API_TOKEN:-local-development-token-change-this}
       EMPORIA_WORKSPACE_ID: ${EMPORIA_WORKSPACE_ID:-local-workspace}
     volumes:
