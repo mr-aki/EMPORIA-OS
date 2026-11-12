@@ -9,7 +9,16 @@ from emporia_api.auth import require_api_token
 from emporia_api.config import settings
 from emporia_api.database import Base, engine, get_session
 from emporia_api.models import AuditEvent, Venture
-from emporia_api.schemas import AuditRead, VentureCreate, VentureRead, VentureUpdate
+from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
+from emporia_api.schemas import (
+    AuditRead,
+    ChatCompletionRead,
+    ChatCompletionRequest,
+    ProviderRead,
+    VentureCreate,
+    VentureRead,
+    VentureUpdate,
+)
 
 
 @asynccontextmanager
@@ -117,17 +126,6 @@ def list_audit_events(
 
 
 
-
-from emporia_api.providers import (
-    ProviderGateway,
-    ProviderNotConfigured,
-    ProviderRequestError,
-)
-from emporia_api.schemas import (
-    ChatCompletionRead,
-    ChatCompletionRequest,
-    ProviderRead,
-)
 
 provider_gateway = ProviderGateway()
 
