@@ -15,7 +15,6 @@ from emporia_api.auth import Principal, require_write_access
 from emporia_api.config import settings
 from emporia_api.database import SessionLocal
 from emporia_api.job_queue import claim_next_job, retry_delay_seconds
-from emporia_api.main import execute_agent, execute_skill
 from emporia_api.models import (
     AuditEvent,
     BackgroundJob,
@@ -117,6 +116,8 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
             return False
 
         try:
+            from emporia_api.main import execute_agent, execute_skill
+
             principal = _resolve_current_principal(session, job)
             if job.kind == "agent":
                 request = AgentRunCreate.model_validate(job.payload)
