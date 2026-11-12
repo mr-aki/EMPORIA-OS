@@ -33,6 +33,7 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | Specialist agent runtime | implemented | Eight versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
 | Network research | implemented | Explicit Brave Search connector, bounded regional search requests, source metadata, response validation, rate-limit mapping, and untrusted external-context handling |
 | FX reference rates | implemented | Keyless Frankfurter daily rate client with latest/historical lookup, in-process caching, Decimal conversion, request validation, and workspace audit events |
+| Action governance | implemented | Four allow-listed proposal types, typed field validation, owner/admin approval, requester separation-of-duties, cancellation, workspace-scoped audit/idempotency, and fail-closed execution gate; no external executors registered |
 | Commerce skills | implemented | 60 versioned advisory skills across four implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, and audit events |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
@@ -54,8 +55,8 @@ The latest API pull request must pass GitHub Actions before its changes are cons
 - Direct Shopify, WooCommerce, Amazon, marketplace, payment, logistics, accounting, and CRM integrations.
 - Complete product, catalogue, supplier, purchase-order, inventory, fulfilment, customer-support, marketing, and finance domains.
 - Background task queue, workflow scheduler, multi-agent coordination, agent evaluation service, and durable retry/dead-letter handling.
-- Permissioned action-tool registry, human approval flows, spend controls, and execution sandbox.
-- Team invitations and full identity lifecycle features.
+- External business-action adapters, spend/budget controls, execution sandbox, compensating transactions, and live commerce-system permissions.
+- Email-based team invitations, account verification, and the remaining full identity lifecycle features. Existing registered accounts can currently be added by the workspace owner.
 - Production hardening evidence: threat model, independent security review, rate limiting, backup/restore drills, monitoring/alerting, load tests, disaster recovery, and a deployment-specific release gate.
 
 ## Engineering principle
