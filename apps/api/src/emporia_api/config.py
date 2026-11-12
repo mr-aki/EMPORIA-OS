@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "emporia-os"
     jwt_access_token_minutes: int = 60
     allow_registration: bool = False
+    legacy_workspace_owner_email: str | None = None
 
     # Provider credentials are server-side secrets; never return these values from an API.
     openai_api_key: SecretStr | None = None
