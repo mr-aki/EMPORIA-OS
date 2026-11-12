@@ -189,7 +189,6 @@ class ResearchRead(BaseModel):
     request_id: str | None = None
 
 
-
 class SkillInputRead(BaseModel):
     key: str
     label: str

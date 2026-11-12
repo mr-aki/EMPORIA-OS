@@ -73,11 +73,9 @@ Prefer a small end-to-end capability that is real, testable, observable, and saf
 
 ## Skills implementation slice
 
-The feat/skills-runtime-v1 change adds a 15-skill commerce pack and an authenticated
-advisory runtime. The implementation includes versioned skill definitions, typed input
-contracts, unknown-field rejection, bounded input payloads, provider-backed execution,
-persisted run history, workspace filtering, and start/completion/failure audit events.
-
-The runtime deliberately has no store, payment, supplier, advertising, or customer-action
-tools. Evaluation and production security review remain separate lifecycle gates. CI
-evidence is tracked on the associated pull request before lifecycle status is advanced.
+The Skills runtime adds a versioned 15-skill commerce pack with typed input contracts,
+unknown-field rejection, bounded payload validation, authenticated provider-backed
+execution, persisted workspace-scoped run history, and start/completion/failure audit
+events. Skills execute as advisory analysis only; they do not grant store, payment,
+supplier, advertising, fulfilment, or customer-action permissions. CI, evaluations, and
+security review remain release gates.

@@ -136,6 +136,8 @@ curl -X POST http://localhost:8000/api/v1/agents/commerce-strategist/runs \\
   }'
 ```
 
+The server enforces a configurable per-run output-token ceiling with `EMPORIA_AGENT_MAX_OUTPUT_TOKENS` (default: 2048; allowed range: 1–4096). Requests above this ceiling are rejected before a run is created or a provider is called. This is a per-request output bound, not a monthly monetary budget or a complete rate/concurrency limiter.
+
 Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. Known upstream failures and unexpected research/provider exceptions transition the run to a terminal failed state; unexpected exception details are not returned to API clients.
 
 **Agent contract:** `GET /api/v1/agents` also returns each specialist's category, expected deliverables, required context, version, and expertise. Internal system prompts remain private. All eight specialists execute through the same provider and run-history pipeline; newly added specialists are covered by endpoint-level execution tests.
@@ -188,7 +190,6 @@ curl -X POST http://localhost:8000/api/v1/agents/product-research-analyst/runs \
 The response contains source URLs, titles, hostnames, excerpts, and available page-age metadata. Agent run history stores the selected source evidence alongside the output so results can be reviewed later. Retrieved page text is untrusted external data; it is passed to the model as reference context, not as system instructions.
 
 **External dependency:** a valid Brave Search API key and active API entitlement are required for live searches. CI uses mocked HTTP responses and does not consume paid API requests. Respect the provider's quotas and rate limits. Search results are evidence to evaluate, not a guarantee that every source is accurate or authoritative.
-
 
 ## Skill catalog and execution
 

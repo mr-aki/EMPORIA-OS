@@ -220,6 +220,14 @@ async def execute_agent(
     agent = get_agent(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if payload.max_tokens > settings.agent_max_output_tokens:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Requested max_tokens exceeds the server agent output limit "
+                f"of {settings.agent_max_output_tokens}"
+            ),
+        )
 
     run = AgentRun(
         workspace_id=settings.workspace_id,
@@ -484,7 +492,6 @@ async def search_web(payload: ResearchQuery, session: SessionDep, actor: AuthDep
             for source in result.sources
         ],
     )
-
 
 @app.get("/api/v1/skills", response_model=list[SkillRead], tags=["skills"])
 def list_registered_skills(

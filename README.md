@@ -7,13 +7,13 @@
 AI-agnostic · Open source · Self-hostable · Human-governed
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-7C5CFC?style=for-the-badge&logo=apache)](LICENSE)
-![Stage: repository foundation](https://img.shields.io/badge/Stage-Repository%20Foundation-0F766E?style=for-the-badge)
+![Stage: backend foundation](https://img.shields.io/badge/Stage-Backend%20Foundation-0F766E?style=for-the-badge)
 
 </div>
 
 ---
 
-> **Honest status:** This repository is at the documentation and governance foundation stage. It does not yet contain a running API, dashboard, agent runtime, commerce integrations, or production deployment. The project is being built incrementally; planned capabilities are not represented as implemented features.
+> **Honest status:** Emporia now contains a runnable FastAPI backend foundation, authenticated workspace-scoped venture APIs, an audit trail, a multi-provider text-generation gateway, a source-linked Brave Search adapter, and an eight-specialist advisory agent runtime with persisted run history. These are working backend slices, not a finished commerce platform. There is not yet a dashboard, live store-admin action layer, approval workflow, job queue, or production deployment. Live AI and research calls require operator-supplied server-side API credentials.
 
 ## The vision
 
@@ -33,7 +33,7 @@ These are product goals, not claims of current implementation.
 
 ## Current repository contents
 
-The initial commit establishes project governance and working standards:
+The repository now includes project governance, an executable API foundation, agent definitions and runtime, provider adapters, network research, tests, and CI. Governance files remain the working standards:
 
 | File | Purpose |
 |---|---|
@@ -54,9 +54,11 @@ The initial commit establishes project governance and working standards:
 5. **Security from the beginning.** Enforce identity, workspace isolation, least privilege, secret hygiene, and approval policies at execution boundaries.
 6. **No production-ready label without proof.** Reliability, security, backup/restore, and deployment gates must pass.
 
-## AI provider direction
+## Current executable backend
 
-The project intends to support multiple hosted and local model providers through explicit adapters. API access, consumer chat subscriptions, and local CLI installations are different products and authorization paths; one does not imply access to another. Provider support will be documented only when the integration is implemented and tested.
+The API includes server-side adapters for OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible model endpoints. It includes eight advisory commerce specialists with authenticated execution, persisted run history, token usage, and audit events. An optional Brave Search connector supplies source-linked research context only when the caller explicitly submits a separate research query. Provider API keys are server-side secrets; consumer chat subscriptions do not provide API credentials.
+
+These agents cannot currently browse the operator's stores, change prices or listings, send campaigns, issue refunds, or perform other external business actions. Approval gates, role-based multi-user identity, job queues, tool sandboxes, and live commerce connectors remain future milestones.
 
 ## Development status
 
