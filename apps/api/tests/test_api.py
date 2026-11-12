@@ -1,6 +1,7 @@
-import pytest
 from datetime import date, timedelta
 from decimal import Decimal
+
+import pytest
 
 
 def test_health_is_public(client):
