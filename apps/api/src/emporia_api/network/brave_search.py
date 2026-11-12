@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +17,14 @@ class ResearchNotConfigured(Exception):
 
 class ResearchRequestError(Exception):
     """Raised when the upstream search API fails or returns invalid data."""
+
+
+class ResearchRateLimited(Exception):
+    """Raised when Brave Search signals that its request budget is exhausted."""
+
+    def __init__(self, retry_after: float = 1.0) -> None:
+        self.retry_after = max(1.0, min(retry_after, 60.0))
+        super().__init__("Brave Search rate limit reached")
 
 
 @dataclass(frozen=True)
@@ -44,10 +54,14 @@ class BraveSearchClient:
         config: Any = settings,
         transport: httpx.AsyncBaseTransport | None = None,
         timeout_seconds: float = 30.0,
+        minimum_interval_seconds: float = 1.0,
     ) -> None:
         self.config = config
         self.transport = transport
         self.timeout = httpx.Timeout(timeout_seconds, connect=8.0)
+        self.minimum_interval_seconds = max(1.0, minimum_interval_seconds)
+        self._request_lock = asyncio.Lock()
+        self._last_request_at = 0.0
 
     @staticmethod
     def _secret(value: SecretStr | str | None) -> str | None:
@@ -64,6 +78,8 @@ class BraveSearchClient:
         self,
         query: str,
         maximum_number_of_tokens: int = 4000,
+        country: str = "US",
+        search_lang: str = "en",
     ) -> WebResearchResult:
         if not self.configured():
             raise ResearchNotConfigured("Brave Search is not configured on this server")
@@ -72,6 +88,12 @@ class BraveSearchClient:
             raise ValueError("Search query must contain 1 to 600 characters")
         if not 1024 <= maximum_number_of_tokens <= 8192:
             raise ValueError("Search context budget must be between 1024 and 8192 tokens")
+        normalized_country = country.strip().upper()
+        normalized_language = search_lang.strip().lower()
+        if len(normalized_country) != 2 or not normalized_country.isalpha():
+            raise ValueError("Country must be a two-letter ISO country code")
+        if not 2 <= len(normalized_language) <= 8 or not normalized_language.isalpha():
+            raise ValueError("Search language must be a valid 2-8 character language code")
 
         key = self._secret(self.config.brave_search_api_key)
         headers = {
@@ -80,23 +102,37 @@ class BraveSearchClient:
         }
         params = {
             "q": normalized_query,
+            "country": normalized_country.lower(),
+            "search_lang": normalized_language,
             "maximum_number_of_tokens": maximum_number_of_tokens,
             "context_threshold_mode": "balanced",
             "safesearch": "strict",
             "enable_source_metadata": "true",
         }
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                transport=self.transport,
-                follow_redirects=False,
-            ) as client:
-                response = await client.get(self.endpoint, headers=headers, params=params)
+            async with self._request_lock:
+                elapsed = time.monotonic() - self._last_request_at
+                if elapsed < self.minimum_interval_seconds:
+                    await asyncio.sleep(self.minimum_interval_seconds - elapsed)
+                self._last_request_at = time.monotonic()
+                async with httpx.AsyncClient(
+                    timeout=self.timeout,
+                    transport=self.transport,
+                    follow_redirects=False,
+                ) as client:
+                    response = await client.get(self.endpoint, headers=headers, params=params)
         except httpx.TimeoutException as exc:
             raise ResearchRequestError("Brave Search request timed out") from exc
         except httpx.RequestError as exc:
             raise ResearchRequestError("Could not connect to Brave Search") from exc
 
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after", "1")
+            try:
+                retry_seconds = float(retry_after)
+            except ValueError:
+                retry_seconds = 1.0
+            raise ResearchRateLimited(retry_seconds)
         if response.is_error:
             raise ResearchRequestError(f"Brave Search returned HTTP {response.status_code}")
         try:
