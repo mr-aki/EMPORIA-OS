@@ -1,12 +1,7 @@
-from decimal import Decimal
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from emporia_api.models import WorkspaceModelPrice
-
-
-MILLION = Decimal("1000000")
 
 
 def snapshot_model_price(session: Session, run: object) -> None:
@@ -30,6 +25,8 @@ def settle_run_cost(
     completion_tokens: int | None,
 ) -> Decimal | None:
     """Calculate a USD estimate only when both rates and both usage counters are known."""
+    from decimal import Decimal
+
     input_rate = run.input_price_usd_per_million_tokens
     output_rate = run.output_price_usd_per_million_tokens
     if (
@@ -44,6 +41,6 @@ def settle_run_cost(
     amount = (
         Decimal(prompt_tokens) * Decimal(input_rate)
         + Decimal(completion_tokens) * Decimal(output_rate)
-    ) / MILLION
+    ) / Decimal(1000000)
     run.estimated_cost_usd = amount
     return amount
