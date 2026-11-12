@@ -56,6 +56,7 @@ from emporia_api.output_budgets import (
     OutputTokenBudgetExceeded,
     enforce_workspace_output_budget,
 )
+from emporia_api.pricing import settle_run_cost, snapshot_model_price
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
 from emporia_api.research.report import build_research_report
@@ -94,6 +95,7 @@ from emporia_api.schemas import (
     WorkspaceSummary,
 )
 from emporia_api.skills.calculations import calculate_skill
+from emporia_api.skills.evaluation import evaluate_skill_output
 from emporia_api.skills.registry import get_skill, list_skills, validate_skill_inputs
 from emporia_api.usage import router as usage_router
 
@@ -378,6 +380,7 @@ async def execute_agent(
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )
+    snapshot_model_price(session, run)
     run, replayed = create_run_once(
         session,
         AgentRun,
@@ -588,6 +591,7 @@ async def execute_agent(
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
+    settle_run_cost(run, reply.prompt_tokens, reply.completion_tokens)
     run.budget_charged_tokens = (
         reply.completion_tokens
         if reply.completion_tokens is not None
@@ -1044,6 +1048,7 @@ async def execute_skill(
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )
+    snapshot_model_price(session, run)
     run, replayed = create_run_once(
         session,
         SkillRun,
@@ -1140,9 +1145,16 @@ async def execute_skill(
 
     run.status = "completed"
     run.output = reply.content
+    run.evaluation_json = json.dumps(
+        evaluate_skill_output(skill, run.output),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
+    settle_run_cost(run, reply.prompt_tokens, reply.completion_tokens)
     run.budget_charged_tokens = (
         reply.completion_tokens
         if reply.completion_tokens is not None
