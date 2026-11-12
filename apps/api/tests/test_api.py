@@ -47,7 +47,7 @@ def test_missing_venture_is_not_found(client, auth_headers):
 
 
 
-def test_ai_provider_catalog_requires_auth_and_never_exposes_secrets(client):
+def test_ai_provider_catalog_requires_auth_and_never_exposes_secrets(client, auth_headers):
     assert client.get("/api/v1/ai/providers").status_code == 401
     response = client.get("/api/v1/ai/providers", headers=auth_headers)
     assert response.status_code == 200
