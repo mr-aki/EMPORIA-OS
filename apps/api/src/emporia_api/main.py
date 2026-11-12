@@ -114,3 +114,66 @@ def list_audit_events(
         select(AuditEvent).where(AuditEvent.workspace_id == settings.workspace_id)
         .order_by(AuditEvent.created_at.desc()).limit(limit)
     ))
+
+
+
+
+from emporia_api.providers import (
+    ProviderGateway,
+    ProviderNotConfigured,
+    ProviderRequestError,
+)
+from emporia_api.schemas import (
+    ChatCompletionRead,
+    ChatCompletionRequest,
+    ProviderRead,
+)
+
+provider_gateway = ProviderGateway()
+
+
+@app.get("/api/v1/ai/providers", response_model=list[ProviderRead], tags=["ai"])
+def list_ai_providers(actor: AuthDep):
+    """Return provider availability without exposing credentials or secret metadata."""
+    return provider_gateway.catalog()
+
+
+@app.post(
+    "/api/v1/ai/chat",
+    response_model=ChatCompletionRead,
+    tags=["ai"],
+)
+async def complete_ai_chat(
+    payload: ChatCompletionRequest,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Send a bounded, authenticated chat request to a configured server-side provider."""
+    try:
+        reply = await provider_gateway.complete(payload)
+    except ProviderNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    session.add(AuditEvent(
+        workspace_id=settings.workspace_id,
+        actor=actor,
+        action="ai.chat.completed",
+        resource_type="ai_provider",
+        resource_id=payload.provider,
+        detail=f"{payload.provider}:{payload.model}",
+    ))
+    session.commit()
+
+    return ChatCompletionRead(
+        provider=reply.provider,
+        model=reply.model,
+        content=reply.content,
+        usage={
+            "prompt_tokens": reply.prompt_tokens,
+            "completion_tokens": reply.completion_tokens,
+            "total_tokens": reply.total_tokens,
+        },
+        provider_request_id=reply.request_id,
+    )
