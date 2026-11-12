@@ -606,7 +606,7 @@ def test_third_pack_rejects_unbounded_discount_and_invalid_research_inputs():
             "currency": "USD",
         },
     )
-    assert errors == []
+    assert errors == ["Input 'discount_tiers' item 0 must be at most 100"]
 
     required = get_skill("claims-substantiation-audit")
     assert required is not None
@@ -635,3 +635,30 @@ def test_third_pack_catalog_detail_and_domain_filter(client, auth_headers):
     assert {item["key"] for item in body["inputs"]} >= {
         "source_market", "target_locale", "assets_to_localize"
     }
+
+
+
+def test_array_numeric_item_bounds_are_published_and_enforced(client, auth_headers):
+    response = client.get("/api/v1/skills/discount-ladder-review", headers=auth_headers)
+    assert response.status_code == 200
+    tiers = {item["key"]: item for item in response.json()["inputs"]}["discount_tiers"]
+    assert tiers["item_minimum"] == 0
+    assert tiers["item_maximum"] == 100
+
+    excessive = client.post(
+        "/api/v1/skills/discount-ladder-review/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "list_price": 50,
+                "unit_landed_cost": 20,
+                "variable_fee_percent": 10,
+                "discount_tiers": [10, 25, 101],
+                "currency": "USD",
+            },
+        },
+    )
+    assert excessive.status_code == 422
+    assert "item 2 must be at most 100" in str(excessive.json()["detail"])
