@@ -112,8 +112,9 @@ def A(key: str, label: str, desc: str, required: bool = True,
 
 def S(id: str, name: str, domain: str, description: str, objective: str,
       inputs: tuple[SkillInput, ...], procedure: tuple[str, ...],
-      outputs: tuple[str, ...], guards: tuple[str, ...]) -> SkillDefinition:
-    return SkillDefinition(id, name, "1.0.0", domain, description, objective,
+      outputs: tuple[str, ...], guards: tuple[str, ...],
+      version: str = "1.0.0") -> SkillDefinition:
+    return SkillDefinition(id, name, version, domain, description, objective,
                            inputs, procedure, outputs, guards)
 
 
@@ -268,7 +269,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       ("Input validation and assumptions","Per-unit cost build-up","Contribution and margin",
        "Break-even and sensitivity","Omitted costs and risks","Decision summary"),
       ("Never invent tax or duty rates.", "State duty base and currency assumptions.",
-       "This is not tax, customs, or accounting advice.")),
+       "This is not tax, customs, or accounting advice."), version="1.1.0"),
     S("inventory-reorder-review", "Inventory Reorder Review", "operations",
       "Estimate reorder timing and quantity from demand, lead time, buffer, and inbound stock.",
       "Provide transparent replenishment guidance with stockout and overstock risks.",
@@ -287,7 +288,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       ("Input checks","Demand and days of cover","Reorder point calculation",
        "Stockout and overstock risks","Suggested reorder action for approval","Forecast data gaps"),
       ("Do not place or schedule a purchase order.", "Do not count unconfirmed inbound as available.",
-       "Do not invent seasonality.")),
+       "Do not invent seasonality."), version="1.1.0"),
     S("pricing-promotion-review", "Pricing and Promotion Review", "pricing",
       "Assess price and discount choices against cost, fees, and target contribution margin.",
       "Make discount economics visible before a promotion is approved.",
@@ -305,7 +306,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       ("Assumptions and validation","Current unit economics","Promotion scenario",
        "Target-margin price floor","Volume trade-off","Approval checks"),
       ("Do not claim a promotion will increase volume without test data.",
-       "State excluded ad spend, returns, fixed costs, and tax.")),
+       "State excluded ad spend, returns, fixed costs, and tax."), version="1.1.0"),
     S("campaign-brief-development", "Campaign Brief Development", "marketing",
       "Develop a measurable campaign brief from audience, offer, channel, budget, and objective.",
       "Translate a growth objective into a coherent creative and measurement plan.",
