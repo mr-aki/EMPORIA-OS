@@ -5,6 +5,7 @@ os.environ["EMPORIA_DATABASE_URL"] = f"sqlite:///{tempfile.mktemp(suffix='.db')}
 os.environ["EMPORIA_API_TOKEN"] = "test-secret"
 os.environ["EMPORIA_WORKSPACE_ID"] = "test-workspace"
 os.environ["EMPORIA_ENVIRONMENT"] = "test"
+os.environ["EMPORIA_AUTO_CREATE_SCHEMA"] = "true"
 
 import pytest
 from fastapi.testclient import TestClient
