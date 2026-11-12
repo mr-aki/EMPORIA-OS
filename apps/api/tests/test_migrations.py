@@ -32,7 +32,21 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0010_login_attempt_rate_limits"
+        assert revision == "0011_workspace_model_costs"
+        assert "workspace_model_prices" in inspector.get_table_names()
+        assert "uq_workspace_model_price_provider_model" in {
+            item["name"]
+            for item in inspector.get_unique_constraints("workspace_model_prices")
+        }
+        assert "ix_workspace_model_prices_workspace_id" in {
+            item["name"] for item in inspector.get_indexes("workspace_model_prices")
+        }
+        for table_name in ("agent_runs", "skill_runs"):
+            assert {
+                "input_price_usd_per_million_tokens",
+                "output_price_usd_per_million_tokens",
+                "estimated_cost_usd",
+            }.issubset({column["name"] for column in inspector.get_columns(table_name)})
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
