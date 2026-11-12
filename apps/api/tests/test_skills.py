@@ -431,6 +431,7 @@ def test_skill_run_api_returns_and_supplies_authoritative_calculations(
     result = response.json()
     assert result["calculations"]["landed_cost_per_unit"] == 7.45
     assert result["calculations"]["duty_base_source"] == "provisional_supplier_unit_cost"
+    assert result["skill_version"] == "1.1.0"
 
 
 
@@ -452,3 +453,17 @@ def test_integer_skill_inputs_reject_fractional_inventory_quantities(client, aut
     )
     assert response.status_code == 422
     assert "must be a whole number" in str(response.json()["detail"])
+
+
+
+def test_deterministic_skills_use_new_semantic_versions():
+    from emporia_api.skills.registry import get_skill
+
+    for skill_id in (
+        "landed-cost-margin-analysis",
+        "inventory-reorder-review",
+        "pricing-promotion-review",
+    ):
+        skill = get_skill(skill_id)
+        assert skill is not None
+        assert skill.version == "1.1.0"
