@@ -30,7 +30,7 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | Database migrations | implemented | Alembic migration for fresh databases and compatibility with the earlier venture/audit/agent-run schema; tests cover fresh and legacy database upgrades |
 | Audit events | implemented | Persistent event records for venture changes, AI calls, agent runs, research calls, and workspace creation |
 | AI provider gateway | implemented | OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible adapters; upstream HTTP contracts are tested with mocks |
-| Specialist agent runtime | implemented | Three versioned advisory definitions, persisted run history, token usage, and start/completion/failure events |
+| Specialist agent runtime | implemented | Eight versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
 | Network research | implemented | Explicit Brave Search connector, bounded search requests, source metadata, and untrusted external-context handling |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
