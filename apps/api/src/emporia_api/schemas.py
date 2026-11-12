@@ -387,3 +387,84 @@ class FXConvertRead(BaseModel):
         "Daily reference rate, not a live trading quote or guaranteed settlement rate."
     )
 
+
+class ActionFieldRead(BaseModel):
+    key: str
+    kind: Literal["string", "object", "integer", "number", "string_array"]
+    required: bool
+    description: str
+    max_length: int | None = None
+
+
+class ActionDefinitionRead(BaseModel):
+    id: str
+    name: str
+    domain: str
+    description: str
+    risk_level: Literal["high", "critical"]
+    fields: list[ActionFieldRead]
+    required_approver_roles: list[str]
+    executor_available: bool = False
+    mode: Literal["proposal_and_approval_only"] = "proposal_and_approval_only"
+
+
+class ActionRequestCreate(BaseModel):
+    action_type: str = Field(min_length=1, max_length=120)
+    target_ref: str = Field(min_length=1, max_length=160)
+    summary: str = Field(min_length=1, max_length=500)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload_size_and_secret_hygiene(self):
+        if len(self.inputs) > 32:
+            raise ValueError("At most 32 action input fields are allowed")
+        try:
+            serialized = json.dumps(self.inputs, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Action inputs must be JSON-safe") from exc
+        if len(serialized.encode("utf-8")) > 16000:
+            raise ValueError("Serialized action inputs must be at most 16000 bytes")
+
+        forbidden = {"password", "secret", "api_key", "access_token", "refresh_token"}
+        def inspect_keys(value: Any) -> None:
+            if isinstance(value, dict):
+                for key, nested in value.items():
+                    if str(key).strip().lower() in forbidden:
+                        raise ValueError("Secrets must never be included in action inputs")
+                    inspect_keys(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    inspect_keys(nested)
+        inspect_keys(self.inputs)
+        return self
+
+
+class ActionDecisionRequest(BaseModel):
+    note: str = Field(default="", max_length=1000)
+
+
+class ActionRequestRead(BaseModel):
+    id: str
+    action_type: str
+    target_ref: str
+    summary: str
+    inputs: dict[str, Any]
+    status: Literal["pending_approval", "approved", "rejected", "cancelled"]
+    requested_by: str
+    approved_by: str | None
+    rejected_by: str | None
+    decision_note: str
+    idempotency_key: str | None
+    executor_available: bool = False
+    execution_block_reason: str
+    requested_at: datetime
+    decided_at: datetime | None
+    cancelled_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
