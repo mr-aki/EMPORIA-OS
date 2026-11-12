@@ -32,7 +32,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0008_business_action_requests"
+        assert revision == "0009_skill_evaluation_snapshots"
         assert {"idempotency_key", "request_fingerprint"}.issubset(
             {column["name"] for column in inspector.get_columns("agent_runs")}
         )
@@ -61,6 +61,9 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             {column["name"] for column in inspector.get_columns("background_jobs")}
         )
         assert "workspace_execution_rate_limits" in inspector.get_table_names()
+        assert "evaluation_json" in {
+            column["name"] for column in inspector.get_columns("skill_runs")
+        }
         assert "uq_skill_runs_workspace_idempotency" in {
             item["name"] for item in inspector.get_unique_constraints("skill_runs")
         }
