@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 """Explicit workspace-priced model cost snapshots and settlement."""
 from decimal import Decimal
 
