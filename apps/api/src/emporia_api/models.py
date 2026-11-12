@@ -112,6 +112,8 @@ class AgentRun(Base):
     input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     output_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
+    reserved_output_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
+    budget_charged_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
@@ -184,6 +186,21 @@ class WorkspaceOutputTokenBudget(Base):
     monthly_output_token_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
+
+class WorkspaceMonthlyCostBudget(Base):
+    """Workspace monthly estimated-USD budget policy."""
+
+    __tablename__ = "workspace_monthly_cost_budgets"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="uq_workspace_monthly_cost_budget"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    monthly_cost_budget_usd: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
 
 class WorkspaceModelPrice(Base):
     """Workspace-configured provider rates, expressed in USD per one million tokens."""
