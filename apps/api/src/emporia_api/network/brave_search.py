@@ -4,8 +4,8 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass
-from email.utils import parsedate_to_datetime
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urlsplit
 
