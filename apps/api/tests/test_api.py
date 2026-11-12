@@ -27,7 +27,9 @@ def test_venture_crud_and_audit(client, auth_headers):
 
     events = client.get("/api/v1/audit-events", headers=auth_headers)
     assert events.status_code == 200
-    assert [event["action"] for event in events.json()] == ["venture.updated", "venture.created"]
+    assert [event["action"] for event in events.json()] == [
+        "venture.updated", "venture.created", "workspace.created"
+    ]
 
     deleted = client.delete(f"/api/v1/ventures/{venture['id']}", headers=auth_headers)
     assert deleted.status_code == 204
@@ -449,7 +451,7 @@ def test_registration_can_be_disabled(client, monkeypatch):
     response = client.post(
         "/api/v1/auth/register",
         json={
-            "email": "blocked@example.local",
+            "email": "blocked@example.com",
             "password": "AnotherStrongPassword!2026",
             "display_name": "Blocked User",
             "workspace_name": "Blocked Workspace",
