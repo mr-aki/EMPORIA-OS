@@ -142,7 +142,6 @@ class AgentRunRead(BaseModel):
     total_tokens: int
     provider_request_id: str | None
     research_sources: list[ResearchSourceRead] = Field(default_factory=list)
-    research_request_id: str | None = None
     created_at: datetime
     completed_at: datetime | None
 
