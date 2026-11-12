@@ -32,7 +32,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0011_workspace_model_costs"
+        assert revision == "0012_products_catalog"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -52,6 +52,40 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         assert "background_jobs" in inspector.get_table_names()
         assert "login_attempt_rate_limits" in inspector.get_table_names()
         assert "workspace_model_prices" in inspector.get_table_names()
+        assert "products" in inspector.get_table_names()
+        product_columns = {
+            column["name"] for column in inspector.get_columns("products")
+        }
+        assert {
+            "id",
+            "workspace_id",
+            "sku",
+            "name",
+            "description",
+            "vendor",
+            "product_type",
+            "status",
+            "price_amount",
+            "cost_amount",
+            "currency",
+            "created_by",
+            "created_at",
+            "updated_at",
+        }.issubset(product_columns)
+        assert "uq_products_workspace_sku" in {
+            item["name"] for item in inspector.get_unique_constraints("products")
+        }
+        assert "ix_products_workspace_id" in {
+            item["name"] for item in inspector.get_indexes("products")
+        }
+        assert "ix_products_workspace_status_created_at" in {
+            item["name"] for item in inspector.get_indexes("products")
+        }
+        assert any(
+            fk["referred_table"] == "workspaces"
+            and fk["constrained_columns"] == ["workspace_id"]
+            for fk in inspector.get_foreign_keys("products")
+        )
         assert "uq_workspace_model_price_provider_model" in {
             item["name"]
             for item in inspector.get_unique_constraints("workspace_model_prices")
