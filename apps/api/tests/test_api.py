@@ -1,4 +1,6 @@
 import pytest
+from datetime import date, timedelta
+from decimal import Decimal
 
 
 def test_health_is_public(client):
@@ -622,3 +624,178 @@ def test_agent_research_maps_provider_rate_limit_and_persists_failure(
         and event["detail"] == "research_rate_limited"
         for event in events
     )
+
+
+def test_fx_rate_endpoint_requires_authentication(client, auth_headers, monkeypatch):
+    assert client.get("/api/v1/finance/fx/rate/USD/PKR").status_code == 401
+
+    from emporia_api.finance.frankfurter import FXRate
+
+    class FakeFrankfurter:
+        async def get_rate(self, base, quote, on_date=None):
+            assert base == "USD"
+            assert quote == "PKR"
+            assert on_date is None
+            return FXRate(
+                base="USD",
+                quote="PKR",
+                rate=Decimal("279.125"),
+                date=date(2026, 11, 11),
+            )
+
+    monkeypatch.setattr("emporia_api.main.frankfurter_client", FakeFrankfurter())
+    response = client.get(
+        "/api/v1/finance/fx/rate/usd/pkr",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["base"] == "USD"
+    assert payload["quote"] == "PKR"
+    assert Decimal(payload["rate"]) == Decimal("279.125")
+    assert payload["date"] == "2026-11-11"
+    assert payload["provider"] == "frankfurter"
+    assert payload["rate_basis"] == "daily_reference_mid_market"
+
+
+def test_fx_conversion_endpoint_uses_decimal_amount_and_writes_audit(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.finance.frankfurter import FXConversion, FXRate
+
+    class FakeFrankfurter:
+        async def convert(self, amount, base, quote, on_date=None):
+            assert amount == Decimal("12.50")
+            assert base == "USD"
+            assert quote == "PKR"
+            assert on_date == date(2025, 12, 31)
+            rate = FXRate(
+                base="USD",
+                quote="PKR",
+                rate=Decimal("279.125"),
+                date=date(2025, 12, 31),
+            )
+            return FXConversion(
+                amount=amount,
+                converted_amount=amount * rate.rate,
+                rate=rate,
+            )
+
+    monkeypatch.setattr("emporia_api.main.frankfurter_client", FakeFrankfurter())
+    response = client.post(
+        "/api/v1/finance/fx/convert",
+        headers=auth_headers,
+        json={
+            "amount": "12.50",
+            "base": "usd",
+            "quote": "pkr",
+            "date": "2025-12-31",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert Decimal(payload["amount"]) == Decimal("12.50")
+    assert Decimal(payload["converted_amount"]) == Decimal("3489.062500")
+    assert payload["base"] == "USD"
+    assert payload["quote"] == "PKR"
+    assert payload["date"] == "2025-12-31"
+    assert payload["disclaimer"].startswith("Daily reference rate")
+
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(
+        event["action"] == "finance.fx.convert.completed"
+        and event["resource_id"] == "USD/PKR"
+        for event in events
+    )
+
+
+def test_fx_rate_endpoint_maps_missing_pair_and_provider_outage(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.finance.frankfurter import FXProviderUnavailable, FXRateNotFound
+
+    class MissingPair:
+        async def get_rate(self, *args, **kwargs):
+            raise FXRateNotFound("No USD/ZZZ rate was found")
+
+    monkeypatch.setattr("emporia_api.main.frankfurter_client", MissingPair())
+    not_found = client.get(
+        "/api/v1/finance/fx/rate/USD/ZZZ",
+        headers=auth_headers,
+    )
+    assert not_found.status_code == 404
+
+    class Outage:
+        async def get_rate(self, *args, **kwargs):
+            raise FXProviderUnavailable("Frankfurter temporarily unavailable")
+
+    monkeypatch.setattr("emporia_api.main.frankfurter_client", Outage())
+    unavailable = client.get(
+        "/api/v1/finance/fx/rate/USD/EUR",
+        headers=auth_headers,
+    )
+    assert unavailable.status_code == 503
+
+
+def test_fx_conversion_validates_currencies_dates_and_amount_before_call(
+    client, auth_headers
+):
+    same_currency = client.post(
+        "/api/v1/finance/fx/convert",
+        headers=auth_headers,
+        json={"amount": "10", "base": "USD", "quote": "USD"},
+    )
+    assert same_currency.status_code == 422
+
+    invalid_currency = client.post(
+        "/api/v1/finance/fx/convert",
+        headers=auth_headers,
+        json={"amount": "10", "base": "US", "quote": "EUR"},
+    )
+    assert invalid_currency.status_code == 422
+
+    non_positive = client.post(
+        "/api/v1/finance/fx/convert",
+        headers=auth_headers,
+        json={"amount": "0", "base": "USD", "quote": "EUR"},
+    )
+    assert non_positive.status_code == 422
+
+    future_date = client.post(
+        "/api/v1/finance/fx/convert",
+        headers=auth_headers,
+        json={
+            "amount": "10",
+            "base": "USD",
+            "quote": "EUR",
+            "date": (date.today() + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert future_date.status_code == 422
+
+
+def test_fx_rate_query_date_is_validated_and_forwarded(client, auth_headers, monkeypatch):
+    from emporia_api.finance.frankfurter import FXRate
+
+    class FakeFrankfurter:
+        async def get_rate(self, base, quote, on_date=None):
+            assert base == "EUR"
+            assert quote == "USD"
+            assert on_date == date(2025, 5, 1)
+            return FXRate(
+                base="EUR",
+                quote="USD",
+                rate=Decimal("1.13"),
+                date=date(2025, 5, 1),
+            )
+
+    monkeypatch.setattr("emporia_api.main.frankfurter_client", FakeFrankfurter())
+    response = client.get(
+        "/api/v1/finance/fx/rate/EUR/USD?date=2025-05-01",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["date"] == "2025-05-01"
