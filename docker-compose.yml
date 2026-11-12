@@ -8,7 +8,7 @@ services:
     volumes:
       - emporia_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -27,7 +27,7 @@ services:
       EMPORIA_DATABASE_URL: ${EMPORIA_DATABASE_URL:-postgresql+psycopg://emporia:local-dev-postgres-password@postgres:5432/emporia}
       EMPORIA_API_TOKEN: ${EMPORIA_API_TOKEN:-local-development-token-change-this}
       EMPORIA_JWT_SECRET: ${EMPORIA_JWT_SECRET:-local-development-jwt-secret-change-before-deploy}
-      EMPORIA_ALLOW_REGISTRATION: ${EMPORIA_ALLOW_REGISTRATION:-true}
+      EMPORIA_ALLOW_REGISTRATION: ${EMPORIA_ALLOW_REGISTRATION:-false}
       EMPORIA_WORKSPACE_ID: ${EMPORIA_WORKSPACE_ID:-local-workspace}
       EMPORIA_OPENAI_API_KEY: ${EMPORIA_OPENAI_API_KEY:-}
       EMPORIA_ANTHROPIC_API_KEY: ${EMPORIA_ANTHROPIC_API_KEY:-}
