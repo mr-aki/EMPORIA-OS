@@ -196,6 +196,9 @@ def test_skill_run_evaluation_passes_only_when_every_required_section_has_body(
     assert evaluation["missing_sections"] == []
     assert evaluation["empty_sections"] == []
 
+    # The evaluation is a stored snapshot and remains available if the live
+    # registry later removes or changes this skill definition.
+    monkeypatch.setattr("emporia_api.skills.registry.get_skill", lambda _skill_id: None)
     detail = client.get(f"/api/v1/skill-runs/{run['id']}", headers=auth_headers)
     assert detail.status_code == 200
     assert detail.json()["evaluation"] == evaluation
