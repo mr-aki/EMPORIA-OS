@@ -83,4 +83,3 @@ def evaluate_skill_output(skill: SkillDefinition, output: str) -> dict[str, Any]
             "Does not assess reasoning quality, evidence quality, or recommendation safety.",
         ],
     }
-}
