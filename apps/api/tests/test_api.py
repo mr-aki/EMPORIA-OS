@@ -320,7 +320,7 @@ def test_agent_research_bounds_task_size_before_external_call(client, auth_heade
 def test_auth_registration_login_and_workspace_isolation(client, auth_headers):
     first_workspace = client.get("/api/v1/auth/me", headers=auth_headers)
     assert first_workspace.status_code == 200
-    assert first_workspace.json()["email"] == "test@example.local"
+    assert first_workspace.json()["email"] == "test@example.com"
     primary_workspace_id = first_workspace.json()["workspaces"][0]["id"]
 
     first_venture = client.post(
@@ -342,7 +342,7 @@ def test_auth_registration_login_and_workspace_isolation(client, auth_headers):
     login = client.post(
         "/api/v1/auth/login",
         json={
-            "email": "test@example.local",
+            "email": "test@example.com",
             "password": "VeryStrongTestPassword!2026",
             "workspace_id": second_workspace_id,
         },
@@ -399,13 +399,13 @@ def test_workspace_membership_is_rechecked_and_viewers_cannot_write(client, auth
 def test_login_does_not_disclose_whether_email_exists(client, auth_headers):
     wrong_password = client.post(
         "/api/v1/auth/login",
-        json={"email": "missing@example.local", "password": "wrong-password"},
+        json={"email": "missing@example.com", "password": "wrong-password"},
     )
     assert wrong_password.status_code == 401
 
     wrong_password_existing = client.post(
         "/api/v1/auth/login",
-        json={"email": "test@example.local", "password": "wrong-password"},
+        json={"email": "test@example.com", "password": "wrong-password"},
     )
     assert wrong_password_existing.status_code == 401
     assert wrong_password_existing.json()["detail"] == wrong_password.json()["detail"]
