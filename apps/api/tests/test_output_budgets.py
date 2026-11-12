@@ -361,3 +361,78 @@ def test_in_progress_run_reserves_its_requested_output_tokens(client, auth_heade
     )
     assert blocked.status_code == 429
     assert blocked.json()["detail"]["reserved"] == 70
+
+
+def test_skill_run_settles_reported_completion_tokens(client, auth_headers, monkeypatch):
+    assert client.put(
+        "/api/v1/usage/budget",
+        headers=auth_headers,
+        json={"monthly_output_tokens": 100},
+    ).status_code == 200
+
+    class FakeGateway:
+        def configured(self, provider):
+            return True
+
+        async def complete(self, request):
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="A demand validation plan.",
+                prompt_tokens=70,
+                completion_tokens=22,
+                total_tokens=92,
+                request_id="skill-budget-settlement",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    result = client.post(
+        "/api/v1/skills/market-opportunity-scan/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "market": "Reusable home storage",
+                "geography": "United Kingdom",
+                "target_customer": "Renters in small urban apartments",
+            },
+            "max_tokens": 60,
+        },
+    )
+    assert result.status_code == 201, result.text
+    state = client.get("/api/v1/usage/budget", headers=auth_headers).json()
+    assert state["used_output_tokens"] == 22
+    assert state["reserved_output_tokens"] == 0
+    assert state["available_output_tokens"] == 78
+
+
+def test_output_budget_reads_are_authenticated_and_workspace_scoped(
+    client, auth_headers
+):
+    assert client.get("/api/v1/usage/budget").status_code == 401
+    configured = client.put(
+        "/api/v1/usage/budget",
+        headers=auth_headers,
+        json={"monthly_output_tokens": 250},
+    )
+    assert configured.status_code == 200
+
+    registration = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "budget-isolation@example.com",
+            "password": "AnotherStrongPassword!2026",
+            "display_name": "Separate Owner",
+            "workspace_name": "Separate Workspace",
+        },
+    )
+    assert registration.status_code == 201
+    other_headers = {
+        "Authorization": f"Bearer {registration.json()['access_token']}"
+    }
+    other_state = client.get("/api/v1/usage/budget", headers=other_headers)
+    assert other_state.status_code == 200
+    assert other_state.json()["configured"] is False
+    assert other_state.json()["monthly_output_token_limit"] is None
+    assert other_state.json()["available_output_tokens"] is None
