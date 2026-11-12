@@ -17,8 +17,8 @@ def test_evaluator_accepts_complete_required_section_headings_for_every_skill():
 def test_evaluator_counts_bullet_list_items_as_section_body():
     skill = get_skill("landed-cost-margin-analysis")
     assert skill is not None
-    output = "\\n\\n".join(
-        f"## {section}\\n- Evidence item one\\n- Evidence item two"
+    output = "\n\n".join(
+        f"## {section}\n- Evidence item one\n- Evidence item two"
         for section in skill.output_sections
     )
 
