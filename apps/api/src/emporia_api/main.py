@@ -18,6 +18,7 @@ from emporia_api.auth import (
 )
 from emporia_api.concurrency import (
     ConcurrentExecutionLimitExceeded,
+    recover_expired_execution_leases,
     reserve_execution_slot,
 )
 from emporia_api.config import settings
@@ -289,6 +290,7 @@ async def execute_agent(
             ),
         )
 
+    recover_expired_execution_leases(session, AgentRun, actor.workspace_id)
     fingerprint = fingerprint_request(
         "agent", agent.id, agent.version, actor.user_id, payload
     )
@@ -893,6 +895,7 @@ async def execute_skill(
             ),
         )
 
+    recover_expired_execution_leases(session, SkillRun, actor.workspace_id)
     fingerprint = fingerprint_request(
         "skill", skill.id, skill.version, actor.user_id, payload
     )
