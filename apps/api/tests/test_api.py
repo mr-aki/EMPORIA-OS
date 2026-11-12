@@ -634,8 +634,8 @@ def test_fx_rate_endpoint_requires_authentication(client, auth_headers, monkeypa
 
     class FakeFrankfurter:
         async def get_rate(self, base, quote, on_date=None):
-            assert base == "USD"
-            assert quote == "PKR"
+            assert base == "usd"
+            assert quote == "pkr"
             assert on_date is None
             return FXRate(
                 base="USD",
