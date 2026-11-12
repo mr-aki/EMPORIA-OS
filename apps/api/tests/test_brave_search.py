@@ -8,117 +8,188 @@ from pydantic import SecretStr
 from emporia_api.network.brave_search import (
     BraveSearchClient,
     ResearchNotConfigured,
+    ResearchRateLimited,
     ResearchRequestError,
 )
 
 
-def make_config(api_key=None):
-    return SimpleNamespace(brave_search_api_key=api_key)
+def make_config(key="brave-test-secret"):
+    return SimpleNamespace(
+        brave_search_api_key=SecretStr(key) if key is not None else None
+    )
 
 
-def test_brave_context_search_sends_key_and_normalizes_grounding_sources():
-    captured = {}
+def test_brave_search_calls_official_endpoint_and_normalizes_sources():
+    seen = {}
 
-    def handler(request):
-        captured["url"] = str(request.url)
-        captured["method"] = request.method
-        captured["auth"] = request.headers.get("x-subscription-token")
-        captured["params"] = dict(request.url.params)
+    def handler(request: httpx.Request):
+        seen["url"] = str(request.url)
+        seen["token"] = request.headers.get("x-subscription-token")
+        seen["query"] = dict(request.url.params)
         return httpx.Response(
             200,
-            headers={"x-request-id": "brave-req-123"},
+            headers={"x-request-id": "brave-request-123"},
             json={
                 "grounding": {
                     "generic": [
                         {
-                            "url": "https://example.com/market-report",
-                            "title": "Market report",
-                            "snippets": [
-                                "The report describes a customer segment.",
-                                "It explains category growth drivers.",
-                            ],
-                        }
-                    ]
+                            "url": "https://official.example/report",
+                            "title": "Official Market Report",
+                            "snippets": ["Evidence passage one.", "Evidence passage two."],
+                        },
+                        {
+                            "url": "ftp://unsupported.example/data",
+                            "title": "Invalid scheme",
+                            "snippets": ["Must be skipped"],
+                        },
+                    ],
+                    "map": [],
                 },
                 "sources": {
-                    "https://example.com/market-report": {
-                        "title": "Market report",
-                        "hostname": "example.com",
-                        "age": ["Published 2 weeks ago"],
+                    "https://official.example/report": {
+                        "title": "Official Market Report",
+                        "hostname": "official.example",
+                        "age": [
+                            "Wednesday, November 11, 2026",
+                            "2026-11-11",
+                            "1 day ago",
+                            "2026-11-11T08:00:00Z",
+                        ],
+                        "description": "Publisher description",
                     }
                 },
             },
         )
 
     client = BraveSearchClient(
-        make_config(SecretStr("brave-private-key")),
+        config=make_config(),
         transport=httpx.MockTransport(handler),
     )
-    result = asyncio.run(client.search("home organization ecommerce", 3000))
+    result = asyncio.run(
+        client.search(
+            "ecommerce returns report",
+            maximum_number_of_tokens=4096,
+            country="PK",
+            search_lang="en",
+        )
+    )
 
-    assert captured["method"] == "GET"
-    assert captured["url"].startswith(BraveSearchClient.endpoint)
-    assert captured["auth"] == "brave-private-key"
-    assert captured["params"]["q"] == "home organization ecommerce"
-    assert captured["params"]["maximum_number_of_tokens"] == "3000"
-    assert captured["params"]["safesearch"] == "strict"
-    assert captured["params"]["enable_source_metadata"] == "true"
-    assert result.request_id == "brave-req-123"
-    assert result.query == "home organization ecommerce"
+    assert seen["url"].startswith("https://api.search.brave.com/res/v1/llm/context?")
+    assert seen["token"] == "brave-test-secret"
+    assert seen["query"]["q"] == "ecommerce returns report"
+    assert seen["query"]["country"] == "pk"
+    assert seen["query"]["search_lang"] == "en"
+    assert seen["query"]["maximum_number_of_tokens"] == "4096"
+    assert seen["query"]["context_threshold_mode"] == "balanced"
+    assert seen["query"]["safesearch"] == "strict"
+    assert seen["query"]["enable_source_metadata"] == "true"
+    assert result.request_id == "brave-request-123"
     assert len(result.sources) == 1
     source = result.sources[0]
-    assert source.index == 1
-    assert source.url == "https://example.com/market-report"
-    assert source.hostname == "example.com"
-    assert source.age == ("Published 2 weeks ago",)
-    assert source.snippets[0].startswith("The report")
+    assert source.url == "https://official.example/report"
+    assert source.hostname == "official.example"
+    assert source.snippets == ("Evidence passage one.", "Evidence passage two.")
+    assert len(source.age) == 4
 
 
-def test_brave_context_search_rejects_missing_credentials():
-    client = BraveSearchClient(make_config())
+def test_brave_search_handles_empty_context_without_fabricating_sources():
+    client = BraveSearchClient(
+        config=make_config(),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={"grounding": {"generic": []}, "sources": {}},
+            )
+        ),
+    )
+    result = asyncio.run(client.search("nothing relevant"))
+
+    assert result.sources == ()
+    assert result.query == "nothing relevant"
+
+
+def test_brave_search_requires_server_side_api_key():
+    client = BraveSearchClient(config=make_config(None))
 
     with pytest.raises(ResearchNotConfigured):
-        asyncio.run(client.search("market research"))
+        asyncio.run(client.search("test query"))
 
 
 @pytest.mark.parametrize(
-    ("query", "budget"),
+    "query,budget,country,language",
     [
-        ("", 4000),
-        ("x" * 601, 4000),
-        ("valid query", 999),
-        ("valid query", 8193),
+        ("", 4096, "US", "en"),
+        ("x" * 601, 4096, "US", "en"),
+        ("valid query", 1023, "US", "en"),
+        ("valid query", 8193, "US", "en"),
+        ("valid query", 4096, "USA", "en"),
+        ("valid query", 4096, "US", "e"),
     ],
 )
-def test_brave_context_search_rejects_invalid_query_or_context_budget(query, budget):
-    client = BraveSearchClient(make_config(SecretStr("brave-key")))
-
+def test_brave_search_rejects_invalid_inputs_before_network(
+    query, budget, country, language
+):
+    client = BraveSearchClient(config=make_config())
     with pytest.raises(ValueError):
-        asyncio.run(client.search(query, budget))
+        asyncio.run(
+            client.search(
+                query,
+                maximum_number_of_tokens=budget,
+                country=country,
+                search_lang=language,
+            )
+        )
 
 
-def test_brave_context_search_sanitizes_upstream_http_errors():
-    def handler(_request):
-        return httpx.Response(429, json={"error": "sensitive vendor payload"})
-
+def test_brave_search_surfaces_upstream_rate_limit_and_retry_after():
     client = BraveSearchClient(
-        make_config(SecretStr("brave-key")),
-        transport=httpx.MockTransport(handler),
+        config=make_config(),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                429,
+                headers={"Retry-After": "3"},
+                json={"error": "sensitive vendor payload"},
+            )
+        ),
     )
 
-    with pytest.raises(ResearchRequestError, match="HTTP 429") as exc:
-        asyncio.run(client.search("market research"))
+    with pytest.raises(ResearchRateLimited) as error:
+        asyncio.run(client.search("query"))
 
-    assert "sensitive vendor payload" not in str(exc.value)
+    assert error.value.retry_after == 3.0
+    assert "sensitive vendor payload" not in str(error.value)
 
 
-def test_brave_context_search_rejects_malformed_payload():
-    def handler(_request):
-        return httpx.Response(200, json={"unexpected": "shape"})
-
+def test_brave_search_surfaces_upstream_authentication_failure():
     client = BraveSearchClient(
-        make_config(SecretStr("brave-key")),
-        transport=httpx.MockTransport(handler),
+        config=make_config(),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={"error": "unauthorized"})
+        ),
     )
-    result = asyncio.run(client.search("market research"))
+
+    with pytest.raises(ResearchRequestError, match="HTTP 401"):
+        asyncio.run(client.search("query"))
+
+
+def test_brave_search_rejects_malformed_grounding_shape():
+    client = BraveSearchClient(
+        config=make_config(),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"grounding": "not-an-object"})
+        ),
+    )
+
+    with pytest.raises(ResearchRequestError, match="invalid response"):
+        asyncio.run(client.search("query"))
+
+
+def test_brave_search_accepts_empty_response_shape():
+    client = BraveSearchClient(
+        config=make_config(),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"unexpected": "shape"})
+        ),
+    )
+    result = asyncio.run(client.search("query"))
     assert result.sources == ()
