@@ -168,7 +168,7 @@ def test_worker_retries_retryable_http_failures_then_succeeds(client, monkeypatc
     async def failing_execute(*args):
         raise HTTPException(status_code=502, detail="Temporary provider failure")
 
-    monkeypatch.setattr("emporia_api.worker.execute_agent", failing_execute)
+    monkeypatch.setattr("emporia_api.main.execute_agent", failing_execute)
     assert asyncio.run(run_one_job("worker-retry")) is True
     job = get_job(job_id)
     assert job.status == "retry_wait"
@@ -183,7 +183,7 @@ def test_worker_retries_retryable_http_failures_then_succeeds(client, monkeypatc
     async def succeeding_execute(*args):
         return SimpleNamespace(id="recovered-agent-run")
 
-    monkeypatch.setattr("emporia_api.worker.execute_agent", succeeding_execute)
+    monkeypatch.setattr("emporia_api.main.execute_agent", succeeding_execute)
     assert asyncio.run(run_one_job("worker-retry")) is True
     completed = get_job(job_id)
     assert completed.status == "succeeded"
@@ -197,7 +197,7 @@ def test_worker_stops_retrying_at_max_attempts(client, monkeypatch):
     async def failing_execute(*args):
         raise HTTPException(status_code=503, detail="Provider still unavailable")
 
-    monkeypatch.setattr("emporia_api.worker.execute_agent", failing_execute)
+    monkeypatch.setattr("emporia_api.main.execute_agent", failing_execute)
     assert asyncio.run(run_one_job("worker-terminal")) is True
     job = get_job(job_id)
     assert job.status == "failed"
@@ -211,6 +211,6 @@ def test_cancelled_jobs_are_not_claimed_or_executed(client, monkeypatch):
     async def unexpected_execute(*args, **kwargs):
         raise AssertionError("Cancelled job must not execute")
 
-    monkeypatch.setattr("emporia_api.worker.execute_agent", unexpected_execute)
+    monkeypatch.setattr("emporia_api.main.execute_agent", unexpected_execute)
     assert asyncio.run(run_one_job("worker-cancelled")) is False
     assert get_job(job_id).status == "cancelled"
