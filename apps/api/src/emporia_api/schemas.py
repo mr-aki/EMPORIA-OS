@@ -341,3 +341,53 @@ class FXConvertRead(BaseModel):
     disclaimer: str = (
         "Daily reference rate, not a live trading quote or guaranteed settlement rate."
     )
+
+
+class AgentJobCreate(BaseModel):
+    kind: Literal["agent"]
+    agent_id: str = Field(min_length=1, max_length=100)
+    payload: AgentRunCreate
+    max_attempts: int = Field(default=3, ge=1, le=5)
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+
+
+class SkillJobCreate(BaseModel):
+    kind: Literal["skill"]
+    skill_id: str = Field(min_length=1, max_length=120)
+    payload: SkillRunCreate
+    max_attempts: int = Field(default=3, ge=1, le=5)
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+
+
+JobSubmission = Annotated[
+    AgentJobCreate | SkillJobCreate,
+    Field(discriminator="kind"),
+]
+
+
+class JobRead(BaseModel):
+    id: str
+    kind: Literal["agent", "skill"]
+    target_id: str
+    status: Literal["queued", "running", "retry_wait", "succeeded", "failed", "cancelled"]
+    attempts: int
+    max_attempts: int
+    available_at: datetime
+    result_id: str | None
+    last_error: str
+    idempotency_key: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
