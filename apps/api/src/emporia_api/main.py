@@ -5,12 +5,16 @@ from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from emporia_api.agents.registry import get_agent, list_agents
 from emporia_api.auth import require_api_token
 from emporia_api.config import settings
 from emporia_api.database import Base, engine, get_session
-from emporia_api.models import AuditEvent, Venture
+from emporia_api.models import AgentRun, AuditEvent, Venture, utcnow
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.schemas import (
+    AgentRead,
+    AgentRunCreate,
+    AgentRunRead,
     AuditRead,
     ChatCompletionRead,
     ChatCompletionRequest,
@@ -175,3 +179,137 @@ async def complete_ai_chat(
         },
         provider_request_id=reply.request_id,
     )
+
+
+@app.get("/api/v1/agents", response_model=list[AgentRead], tags=["agents"])
+def list_registered_agents(actor: AuthDep):
+    """List installed specialist definitions without exposing private system prompts."""
+    return [
+        {**agent.public_metadata(), "tools_enabled": False}
+        for agent in list_agents()
+    ]
+
+
+@app.post(
+    "/api/v1/agents/{agent_id}/runs",
+    response_model=AgentRunRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["agents"],
+)
+async def execute_agent(
+    agent_id: str,
+    payload: AgentRunCreate,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Run a specialist against a configured model provider; no external action tools are enabled."""
+    agent = get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    run = AgentRun(
+        workspace_id=settings.workspace_id,
+        agent_id=agent.id,
+        agent_version=agent.version,
+        provider=payload.provider,
+        model=payload.model,
+        status="running",
+        task=payload.task,
+    )
+    session.add(run)
+    session.flush()
+    session.add(AuditEvent(
+        workspace_id=settings.workspace_id,
+        actor=actor,
+        action="agent.run.started",
+        resource_type="agent_run",
+        resource_id=run.id,
+        detail=f"{agent.id}:{payload.provider}:{payload.model}",
+    ))
+    session.commit()
+    session.refresh(run)
+
+    chat_request = ChatCompletionRequest(
+        provider=payload.provider,
+        model=payload.model,
+        messages=[
+            {"role": "system", "content": agent.system_prompt},
+            {"role": "user", "content": payload.task},
+        ],
+        max_tokens=payload.max_tokens,
+        temperature=payload.temperature,
+    )
+    try:
+        reply = await provider_gateway.complete(chat_request)
+    except ProviderNotConfigured as exc:
+        run.status = "failed"
+        run.error_message = str(exc)
+        run.completed_at = utcnow()
+        session.add(AuditEvent(
+            workspace_id=settings.workspace_id,
+            actor=actor,
+            action="agent.run.failed",
+            resource_type="agent_run",
+            resource_id=run.id,
+            detail="provider_not_configured",
+        ))
+        session.commit()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRequestError as exc:
+        run.status = "failed"
+        run.error_message = str(exc)
+        run.completed_at = utcnow()
+        session.add(AuditEvent(
+            workspace_id=settings.workspace_id,
+            actor=actor,
+            action="agent.run.failed",
+            resource_type="agent_run",
+            resource_id=run.id,
+            detail="provider_request_failed",
+        ))
+        session.commit()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    run.status = "completed"
+    run.output = reply.content
+    run.prompt_tokens = reply.prompt_tokens or 0
+    run.completion_tokens = reply.completion_tokens or 0
+    run.total_tokens = reply.total_tokens or 0
+    run.provider_request_id = reply.request_id
+    run.completed_at = utcnow()
+    session.add(AuditEvent(
+        workspace_id=settings.workspace_id,
+        actor=actor,
+        action="agent.run.completed",
+        resource_type="agent_run",
+        resource_id=run.id,
+        detail=f"{agent.id}:{run.total_tokens}_tokens",
+    ))
+    session.commit()
+    session.refresh(run)
+    return run
+
+
+@app.get("/api/v1/agent-runs", response_model=list[AgentRunRead], tags=["agents"])
+def list_agent_runs(
+    session: SessionDep,
+    actor: AuthDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+):
+    return list(session.scalars(
+        select(AgentRun)
+        .where(AgentRun.workspace_id == settings.workspace_id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(limit)
+    ))
+
+
+@app.get("/api/v1/agent-runs/{run_id}", response_model=AgentRunRead, tags=["agents"])
+def get_agent_run(run_id: str, session: SessionDep, actor: AuthDep):
+    run = session.scalar(select(AgentRun).where(
+        AgentRun.id == run_id,
+        AgentRun.workspace_id == settings.workspace_id,
+    ))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    return run
