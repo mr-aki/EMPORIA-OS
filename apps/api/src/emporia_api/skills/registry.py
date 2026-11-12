@@ -375,9 +375,6 @@ SKILLS: tuple[SkillDefinition, ...] = (
        "Priority fixes","Owner and metric suggestions","Policy and customer fairness checks"),
       ("Use anonymized records only.",
        "Do not recommend obstructing legitimate refunds or statutory customer rights.")),
-)
-
-
     S("customer-persona-builder", "Customer Persona Builder", "customer",
       "Build evidence-labelled buying personas from anonymized customer, order, and research evidence.",
       "Describe actionable buying contexts and decision drivers without turning assumptions into customer facts.",
@@ -656,6 +653,8 @@ SKILLS: tuple[SkillDefinition, ...] = (
       ("Do not invent event dates or assume every market observes the same holidays.",
        "Do not recommend offers that breach supplied margin floors or confirmed inventory constraints.",
        "Calendar planning does not publish or launch campaigns.")),
+)
+
 
 _SKILLS_BY_ID = {skill.id: skill for skill in SKILLS}
 if len(_SKILLS_BY_ID) != len(SKILLS):
