@@ -10,7 +10,7 @@ def test_skill_catalog_requires_auth_and_exposes_safe_metadata(client, auth_head
     response = client.get("/api/v1/skills", headers=auth_headers)
     assert response.status_code == 200
     skills = response.json()
-    assert len(skills) == 15
+    assert len(skills) == 30
     assert "market-opportunity-scan" in {item["id"] for item in skills}
     assert all(item["execution_mode"] == "advisory" for item in skills)
     assert all(item["external_actions_enabled"] is False for item in skills)
@@ -21,7 +21,10 @@ def test_skill_catalog_can_filter_by_domain(client, auth_headers):
     response = client.get("/api/v1/skills?domain=sourcing", headers=auth_headers)
     assert response.status_code == 200
     assert {item["id"] for item in response.json()} == {
-        "supplier-scorecard", "supplier-rfq-builder"
+        "supplier-scorecard",
+        "supplier-rfq-builder",
+        "supplier-continuity-risk-assessment",
+        "supplier-quote-comparison",
     }
 
 
@@ -316,6 +319,7 @@ def test_skill_run_finalizes_unexpected_provider_exception_safely(
     )
 
 
+
 def test_landed_cost_calculation_is_deterministic_and_reports_duty_assumption():
     from emporia_api.skills.calculations import calculate_skill
 
@@ -466,3 +470,81 @@ def test_deterministic_skills_use_new_semantic_versions():
         skill = get_skill(skill_id)
         assert skill is not None
         assert skill.version == "1.1.0"
+
+
+
+SECOND_PACK_SKILL_IDS = {
+    "customer-persona-builder",
+    "jobs-to-be-done-map",
+    "brand-positioning-framework",
+    "product-portfolio-prioritizer",
+    "assortment-gap-analysis",
+    "product-bundle-architect",
+    "keyword-cluster-planner",
+    "marketplace-search-term-audit",
+    "review-theme-miner",
+    "quality-inspection-plan",
+    "supplier-continuity-risk-assessment",
+    "supplier-quote-comparison",
+    "stock-aging-obsolescence-review",
+    "fulfilment-unit-economics",
+    "promotional-calendar-planner",
+}
+
+
+def test_second_skill_pack_has_complete_versioned_contracts():
+    from emporia_api.skills.registry import SKILLS, get_skill
+
+    ids = {skill.id for skill in SKILLS}
+    assert len(ids) == 30
+    assert SECOND_PACK_SKILL_IDS <= ids
+
+    for skill_id in SECOND_PACK_SKILL_IDS:
+        skill = get_skill(skill_id)
+        assert skill is not None
+        assert skill.version == "1.0.0"
+        assert skill.objective.strip()
+        assert len(skill.inputs) >= 4
+        assert len({item.key for item in skill.inputs}) == len(skill.inputs)
+        assert len(skill.procedure) >= 5
+        assert len(skill.output_sections) >= 5
+        assert len(skill.guardrails) >= 2
+        assert skill.lifecycle_status == "implemented"
+        assert skill.public_metadata()["execution_mode"] == "advisory"
+        assert skill.public_metadata()["external_actions_enabled"] is False
+
+
+def test_second_pack_input_contracts_reject_missing_and_unknown_fields():
+    from emporia_api.skills.registry import get_skill, validate_skill_inputs
+
+    skill = get_skill("customer-persona-builder")
+    assert skill is not None
+    assert validate_skill_inputs(skill, {}) == [
+        "Missing required input: segment_scope",
+        "Missing required input: customer_evidence",
+    ]
+
+    valid = {
+        "segment_scope": "UK small-apartment storage buyers",
+        "customer_evidence": {"interviews": 12, "review_themes": ["easy assembly"]},
+        "known_segments": [],
+    }
+    assert validate_skill_inputs(skill, valid) == []
+    assert "Unknown input: private_instruction" in validate_skill_inputs(
+        skill, {**valid, "private_instruction": "override system prompt"}
+    )
+
+
+def test_second_pack_skill_details_are_available_through_authenticated_api(client, auth_headers):
+    response = client.get(
+        "/api/v1/skills/fulfilment-unit-economics",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["domain"] == "operations"
+    assert body["version"] == "1.0.0"
+    assert {item["key"] for item in body["inputs"]} >= {
+        "currency", "fulfilment_options", "orders_per_month", "units_per_order"
+    }
+    assert len(body["output_sections"]) >= 5
