@@ -377,3 +377,61 @@ A request that would exceed the configured workspace/month limit returns HTTP 42
 **Scope:** this is a completion/output-token budget for agent and skill runs only. Prompt/input tokens, Brave Search requests, general `/api/v1/ai/chat` calls, provider currency pricing, and other provider charges are not included. It is not a monetary billing or total provider-spend cap. A workspace without a configured budget remains unlimited by this control. Budget periods use UTC calendar months.
 
 
+
+
+## Durable background execution queue
+
+The optional durable queue stores agent/skill execution requests in PostgreSQL and processes
+them in a separate worker container. Apply Alembic migrations before starting the updated API
+and worker:
+
+```bash
+docker compose run --rm api alembic upgrade head
+docker compose up -d --build api worker
+```
+
+Submit a registered advisory agent:
+
+```http
+POST /api/v1/jobs
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "kind": "agent",
+  "agent_id": "commerce-strategist",
+  "payload": {
+    "provider": "openai",
+    "model": "gpt-5",
+    "task": "Prepare a launch plan.",
+    "max_tokens": 512
+  },
+  "max_attempts": 3,
+  "idempotency_key": "launch-plan-2026-11"
+}
+```
+
+Use `GET /api/v1/jobs` and `GET /api/v1/jobs/{job_id}` to inspect workspace-owned job
+metadata. `POST /api/v1/jobs/{job_id}/cancel` cancels a queued or retry-waiting job; it
+cannot interrupt an upstream provider request already in progress. Job API responses never
+include the submitted task/input payload.
+
+The worker claims jobs with a database transaction, PostgreSQL row locking and a conditional
+compare-and-set update. It retries selected transient HTTP failures with bounded exponential
+backoff, and recovers abandoned worker leases. Configure
+`EMPORIA_WORKER_POLL_SECONDS`, `EMPORIA_WORKER_LEASE_SECONDS`,
+`EMPORIA_WORKER_BACKOFF_BASE_SECONDS` and `EMPORIA_WORKER_BACKOFF_MAX_SECONDS`.
+The worker lease must exceed the longest expected provider call; this first version does not
+renew leases during execution. A lease-expired job is eligible for another attempt until its
+configured attempt limit is reached.
+
+**Authorization boundary:** enqueue requires a registered JWT user with a write-capable
+workspace role. Before execution, the worker rechecks that the original account is still active
+and that its current workspace membership still grants write access; revoked users' jobs fail
+closed. The worker constructs a fresh principal from the current membership and never
+substitutes an owner/admin role. The legacy development bearer token cannot enqueue durable
+jobs because it has no persisted account membership to revalidate.
+
+Jobs dispatch only the existing advisory agent and skill handlers. No browser, shell, store
+admin, payment, order, campaign, or other external business-action tools are granted. Use
+PostgreSQL for multi-worker deployments; SQLite is intended for local/single-process testing.
