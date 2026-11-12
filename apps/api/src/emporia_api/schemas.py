@@ -193,7 +193,7 @@ class ResearchQuery(BaseModel):
         max_length=8,
         pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,4})?$",
     )
-    maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
+    maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=32768)
 
     @field_validator("country", mode="before")
     @classmethod
