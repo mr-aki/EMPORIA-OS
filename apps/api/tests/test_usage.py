@@ -296,7 +296,7 @@ def test_costs_remain_explicitly_unpriced_without_rates_and_are_workspace_scoped
     assert own_costs.json()["totals"]["runs"] == 1
     assert own_costs.json()["totals"]["priced_runs"] == 0
     assert own_costs.json()["totals"]["unpriced_runs"] == 1
-    assert Decimal(str(own_costs.json()["totals"]["estimated_cost_usd"])) == Decimal("0")
+    assert Decimal(str(own_costs.json()["totals"]["estimated_cost_usd"])) == Decimal(0)
 
     registration = client.post(
         "/api/v1/auth/register",
