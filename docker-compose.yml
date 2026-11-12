@@ -1,17 +1,43 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-emporia}
+      POSTGRES_USER: ${POSTGRES_USER:-emporia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-postgres-password}
+    volumes:
+      - emporia_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
   api:
     build:
       context: ./apps/api
     ports:
       - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      EMPORIA_ENVIRONMENT: development
-      EMPORIA_DATABASE_URL: sqlite:////data/emporia.db
+      EMPORIA_ENVIRONMENT: ${EMPORIA_ENVIRONMENT:-development}
+      EMPORIA_DATABASE_URL: ${EMPORIA_DATABASE_URL:-postgresql+psycopg://emporia:local-dev-postgres-password@postgres:5432/emporia}
       EMPORIA_API_TOKEN: ${EMPORIA_API_TOKEN:-local-development-token-change-this}
+      EMPORIA_JWT_SECRET: ${EMPORIA_JWT_SECRET:-local-development-jwt-secret-change-before-deploy}
+      EMPORIA_ALLOW_REGISTRATION: ${EMPORIA_ALLOW_REGISTRATION:-false}
       EMPORIA_WORKSPACE_ID: ${EMPORIA_WORKSPACE_ID:-local-workspace}
-    volumes:
-      - emporia_data:/data
+      EMPORIA_AGENT_MAX_OUTPUT_TOKENS: ${EMPORIA_AGENT_MAX_OUTPUT_TOKENS:-2048}
+      EMPORIA_SKILL_MAX_OUTPUT_TOKENS: ${EMPORIA_SKILL_MAX_OUTPUT_TOKENS:-2048}
+      EMPORIA_OPENAI_API_KEY: ${EMPORIA_OPENAI_API_KEY:-}
+      EMPORIA_ANTHROPIC_API_KEY: ${EMPORIA_ANTHROPIC_API_KEY:-}
+      EMPORIA_GEMINI_API_KEY: ${EMPORIA_GEMINI_API_KEY:-}
+      EMPORIA_OPENAI_COMPATIBLE_BASE_URL: ${EMPORIA_OPENAI_COMPATIBLE_BASE_URL:-}
+      EMPORIA_OPENAI_COMPATIBLE_API_KEY: ${EMPORIA_OPENAI_COMPATIBLE_API_KEY:-}
+      EMPORIA_BRAVE_SEARCH_API_KEY: ${EMPORIA_BRAVE_SEARCH_API_KEY:-}
     restart: unless-stopped
 
 volumes:
-  emporia_data:
+  emporia_postgres_data:
