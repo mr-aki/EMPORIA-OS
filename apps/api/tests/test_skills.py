@@ -822,3 +822,56 @@ def test_skill_numeric_validation_rejects_unrepresentable_large_integers(client,
 
     assert response.status_code == 422
     assert "media_spend" in str(response.json()["detail"])
+
+
+def test_skill_run_evaluation_is_a_persisted_snapshot(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.providers import ProviderReply
+    from emporia_api.skills.registry import get_skill
+
+    skill = get_skill("market-opportunity-scan")
+    assert skill is not None
+    newline = chr(10)
+    output = (newline * 2).join(
+        f"## {section}{newline}- Evidence and analysis for {section}."
+        for section in skill.output_sections
+    )
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content=output,
+                prompt_tokens=100,
+                completion_tokens=80,
+                total_tokens=180,
+                request_id="req_skill_evaluation_snapshot",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    response = client.post(
+        "/api/v1/skills/market-opportunity-scan/runs",
+        headers=auth_headers,
+        json={"provider": "openai", "model": "gpt-5", "inputs": MARKET_INPUTS},
+    )
+    assert response.status_code == 201, response.text
+    run = response.json()
+    evaluation = run["evaluation"]
+    assert evaluation["passed"] is True
+    assert evaluation["present_sections"] == list(skill.output_sections)
+    assert evaluation["missing_sections"] == []
+    assert evaluation["empty_sections"] == []
+
+    # The persisted value remains available even when the live registry changes.
+    monkeypatch.setattr("emporia_api.skills.registry.get_skill", lambda _skill_id: None)
+    detail = client.get(f"/api/v1/skill-runs/{run['id']}", headers=auth_headers)
+    history = client.get("/api/v1/skill-runs", headers=auth_headers)
+    assert detail.status_code == 200
+    assert history.status_code == 200
+    assert detail.json()["evaluation"] == evaluation
+    assert history.json()[0]["evaluation"] == evaluation
