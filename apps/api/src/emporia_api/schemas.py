@@ -102,7 +102,7 @@ class AgentRunCreate(BaseModel):
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
     research_country: str = Field(default="US", pattern=r"^[A-Z]{2}$")
-    research_lang: str = Field(default="en", min_length=2, max_length=8, pattern=r"^[A-Za-z]{2,8}$")
+    research_lang: str = Field(default="en", min_length=2, max_length=8, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,4})?$")
 
     @model_validator(mode="after")
     def require_explicit_research_query(self):
