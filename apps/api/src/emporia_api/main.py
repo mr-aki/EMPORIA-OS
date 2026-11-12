@@ -532,6 +532,14 @@ async def execute_skill(
             status_code=422,
             detail={"message": "Skill inputs are invalid", "errors": validation_errors},
         )
+    if payload.max_tokens > settings.skill_max_output_tokens:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Requested max_tokens exceeds the server skill output limit "
+                f"of {settings.skill_max_output_tokens}"
+            ),
+        )
 
     run = SkillRun(
         workspace_id=settings.workspace_id,
@@ -602,6 +610,17 @@ async def execute_skill(
         ))
         session.commit()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        run.status = "failed"
+        run.error_message = "Unexpected skill execution failure"
+        run.completed_at = utcnow()
+        session.add(AuditEvent(
+            workspace_id=settings.workspace_id, actor=actor, action="skill.run.failed",
+            resource_type="skill_run", resource_id=run.id,
+            detail="provider_unexpected_failure",
+        ))
+        session.commit()
+        raise HTTPException(status_code=502, detail=run.error_message) from exc
 
     run.status = "completed"
     run.output = reply.content
