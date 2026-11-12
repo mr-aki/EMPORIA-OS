@@ -39,7 +39,7 @@ def reserve_execution_slot(
         .values(name=Workspace.name)
     )
 
-    expired = session.execute(
+    expired_result = session.execute(
         update(run_model)
         .where(
             run_model.workspace_id == workspace_id,
@@ -55,7 +55,7 @@ def reserve_execution_slot(
         )
         .returning(run_model.id)
     )
-    expired_ids = session.execute(expired).scalars().all()
+    expired_ids = expired_result.scalars().all()
     if expired_ids:
         execution_type = "agent" if run_model is AgentRun else "skill"
         resource_type = "agent_run" if run_model is AgentRun else "skill_run"
