@@ -105,20 +105,10 @@ class AgentRun(Base):
     status: Mapped[str] = mapped_column(String(20), default="running", nullable=False)
     task: Mapped[str] = mapped_column(Text, nullable=False)
     output: Mapped[str] = mapped_column(Text, default="", nullable=False)
-    evaluation_json: Mapped[str] = mapped_column(
-        Text, default="{}", server_default="{}", nullable=False
-    )
     error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(
-        Numeric(20, 10), nullable=True
-    )
-    output_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(
-        Numeric(20, 10), nullable=True
-    )
-    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
     input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(
         Numeric(20, 10), nullable=True
     )
@@ -228,6 +218,13 @@ class SkillRun(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    output_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
