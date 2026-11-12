@@ -28,11 +28,12 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "workspaces",
             "workspace_memberships",
             "skill_runs",
+            "background_jobs",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0002_skill_runs"
+        assert revision == "0003_background_jobs"
     finally:
         engine.dispose()
 
@@ -107,3 +108,46 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         }
     finally:
         legacy_engine.dispose()
+
+
+def test_background_job_migration_adds_queue_and_can_rollback_only_queue(
+    tmp_path, monkeypatch
+):
+    database_url = f"sqlite:///{tmp_path / 'background-jobs.db'}"
+    monkeypatch.setattr(settings, "database_url", database_url)
+    config = Config("alembic.ini")
+    command.upgrade(config, "0002_skill_runs")
+
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO ventures "
+                "(id, workspace_id, name, description, status, created_at, updated_at) "
+                "VALUES ('queue-migration-venture', 'workspace-1', 'Existing store', '', "
+                "'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ))
+
+        command.upgrade(config, "head")
+        inspector = inspect(engine)
+        assert "background_jobs" in inspector.get_table_names()
+        assert "ix_background_jobs_status_available_at" in {
+            item["name"] for item in inspector.get_indexes("background_jobs")
+        }
+
+        with engine.connect() as connection:
+            name = connection.scalar(text(
+                "SELECT name FROM ventures WHERE id = 'queue-migration-venture'"
+            ))
+        assert name == "Existing store"
+
+        command.downgrade(config, "0002_skill_runs")
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+        assert "background_jobs" not in tables
+        assert {
+            "ventures", "audit_events", "agent_runs", "skill_runs",
+            "users", "workspaces", "workspace_memberships",
+        }.issubset(tables)
+    finally:
+        engine.dispose()
