@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     worker_lease_seconds: int = Field(default=300, ge=30, le=3600)
     worker_backoff_base_seconds: int = Field(default=5, ge=1, le=300)
     worker_backoff_max_seconds: int = Field(default=300, ge=1, le=3600)
+    job_submissions_per_minute: int = Field(default=20, ge=1, le=600)
 
     # Provider credentials are server-side secrets; never return these values from an API.
     openai_api_key: SecretStr | None = None

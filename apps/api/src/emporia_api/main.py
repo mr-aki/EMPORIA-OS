@@ -1294,6 +1294,21 @@ def enqueue_background_job(
         if existing is not None:
             return resolve_existing(existing)
 
+    try:
+        consume_workspace_rate_limit(
+            session,
+            actor.workspace_id,
+            "job",
+            settings.job_submissions_per_minute,
+        )
+    except RateLimitExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
     job = BackgroundJob(
         workspace_id=actor.workspace_id,
         actor=actor.user_id,

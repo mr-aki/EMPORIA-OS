@@ -1,3 +1,6 @@
+from emporia_api.config import settings
+
+
 class FakeGateway:
     def configured(self, provider):
         return provider == "openai"
@@ -95,3 +98,29 @@ def test_enqueue_rejects_unconfigured_provider(client, auth_headers, monkeypatch
     monkeypatch.setattr("emporia_api.main.provider_gateway", UnconfiguredGateway())
     response = client.post("/api/v1/jobs", headers=auth_headers, json=payload())
     assert response.status_code == 503
+
+
+
+def test_job_enqueue_rate_limit_is_workspace_scoped_and_replay_is_free(
+    client, auth_headers, monkeypatch
+):
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    monkeypatch.setattr(settings, "job_submissions_per_minute", 1)
+
+    first = client.post("/api/v1/jobs", headers=auth_headers, json=payload())
+    assert first.status_code == 201, first.text
+
+    replay = client.post("/api/v1/jobs", headers=auth_headers, json=payload())
+    assert replay.status_code == 200
+    assert replay.json()["id"] == first.json()["id"]
+
+    second_payload = payload()
+    second_payload["idempotency_key"] = "launch-job-002"
+    limited = client.post(
+        "/api/v1/jobs",
+        headers=auth_headers,
+        json=second_payload,
+    )
+    assert limited.status_code == 429
+    assert int(limited.headers["Retry-After"]) >= 1
+    assert len(client.get("/api/v1/jobs", headers=auth_headers).json()) == 1
