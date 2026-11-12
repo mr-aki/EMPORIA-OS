@@ -11,7 +11,6 @@ from emporia_api.config import settings
 from emporia_api.database import Base
 from emporia_api.main import app, lifespan
 
-
 API_ROOT = Path(__file__).resolve().parents[1]
 
 
