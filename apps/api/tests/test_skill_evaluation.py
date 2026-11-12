@@ -13,6 +13,21 @@ def test_evaluator_accepts_complete_required_section_headings_for_every_skill():
         assert result["evaluation_type"] == "required_section_coverage"
 
 
+
+def test_evaluator_counts_bullet_list_items_as_section_body():
+    skill = get_skill("landed-cost-margin-analysis")
+    assert skill is not None
+    output = "\\n\\n".join(
+        f"## {section}\\n- Evidence item one\\n- Evidence item two"
+        for section in skill.output_sections
+    )
+
+    result = evaluate_skill_output(skill, output)
+
+    assert result["passed"] is True
+    assert result["empty_sections"] == []
+    assert result["missing_sections"] == []
+
 def test_evaluator_reports_missing_sections_without_quality_overclaim():
     skill = get_skill("contribution-margin-waterfall")
     assert skill is not None
