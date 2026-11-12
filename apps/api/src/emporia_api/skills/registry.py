@@ -1288,8 +1288,13 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
                 continue
         elif field.value_type == "number":
             valid = isinstance(value, (int, float)) and not isinstance(value, bool)
-            if valid and isinstance(value, float):
-                valid = math.isfinite(value)
+            if valid:
+                try:
+                    valid = math.isfinite(value)
+                except OverflowError:
+                    # JSON integers are unbounded in Python; reject values that cannot
+                    # be represented as finite numeric inputs before Decimal arithmetic.
+                    valid = False
             if valid and field.integer_only and isinstance(value, float) and not value.is_integer():
                 errors.append(f"Input '{field.key}' must be a whole number")
                 continue
