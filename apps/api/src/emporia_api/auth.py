@@ -1,11 +1,13 @@
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import secrets
 from typing import Annotated
 
 import jwt
+from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import Depends, Header, HTTPException, status
 from pwdlib import PasswordHash
+from pwdlib.exceptions import UnknownHashError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,7 +34,7 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, password_hash: str) -> bool:
     try:
         return _password_hash.verify(password, password_hash)
-    except Exception:
+    except (InvalidHashError, VerificationError, UnknownHashError):
         return False
 
 
@@ -67,8 +69,8 @@ def create_access_token(user_id: str, workspace_id: str) -> str:
 
 
 def get_current_principal(
+    session: Annotated[Session, Depends(get_session)],
     authorization: Annotated[str | None, Header()] = None,
-    session: Session = Depends(get_session),
 ) -> Principal:
     if not authorization:
         raise HTTPException(
