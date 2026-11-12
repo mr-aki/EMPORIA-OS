@@ -49,3 +49,54 @@ SQLite is the zero-dependency local default. Set `EMPORIA_DATABASE_URL` to a Pos
 - `GET /api/v1/audit-events`
 
 All venture and audit routes require a bearer token. Mutations create audit events in the same database transaction.
+
+
+## AI provider gateway
+
+The API includes an authenticated, server-side text-generation gateway for:
+
+- **OpenAI** via the Chat Completions REST endpoint.
+- **Anthropic Claude** via the Messages API.
+- **Google Gemini** via `generateContent`.
+- **OpenAI-compatible endpoints**, including operator-managed local model servers such as Ollama.
+
+Configure keys in the API process environment (or a deployment secrets manager):
+
+```bash
+export EMPORIA_OPENAI_API_KEY="..."
+export EMPORIA_ANTHROPIC_API_KEY="..."
+export EMPORIA_GEMINI_API_KEY="..."
+```
+
+For a local OpenAI-compatible server, configure its server-side base URL:
+
+```bash
+export EMPORIA_OPENAI_COMPATIBLE_BASE_URL="http://127.0.0.1:11434/v1"
+# API key is optional for local servers that do not require one.
+export EMPORIA_OPENAI_COMPATIBLE_API_KEY=""
+```
+
+In Docker, `127.0.0.1` refers to the API container itself. Use a service name on the Compose network or a host address reachable from the container.
+
+Authenticated endpoints:
+
+- `GET /api/v1/ai/providers` returns configured provider names and safe capability metadata, never credentials.
+- `POST /api/v1/ai/chat` sends a bounded text chat request and returns normalized content and token usage.
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ai/chat \\
+  -H "Authorization: Bearer $EMPORIA_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "provider": "openai",
+    "model": "gpt-5",
+    "messages": [{"role": "user", "content": "Summarize my launch checklist."}],
+    "max_tokens": 500
+  }'
+```
+
+**Credential distinction:** provider API keys are separate from ChatGPT, Claude, or Gemini consumer subscriptions. This gateway makes direct server-to-server API calls and uses the API billing/quotas of the configured provider account. Never put provider keys in browser code, source control, agent prompts, or request payloads.
+
+The gateway does not execute model-generated tools or business actions. Autonomous agent execution, approvals, budgets, retries, and tool sandboxing are separate layers that must be implemented before allowing bots to act on connected business systems.
