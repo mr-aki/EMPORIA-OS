@@ -31,6 +31,7 @@ from emporia_api.finance.frankfurter import (
     FXProviderUnavailable,
     FXRateNotFound,
 )
+from emporia_api.integrations.shopify.api import router as shopify_router
 from emporia_api.idempotency import (
     create_run_once,
     find_replay,
@@ -109,6 +110,7 @@ from emporia_api.usage import router as usage_router
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.include_router(usage_router)
 app.include_router(actions_router)
+app.include_router(shopify_router)
 SessionDep = Annotated[Session, Depends(get_session)]
 AuthDep = Annotated[Principal, Depends(get_current_principal)]
 
