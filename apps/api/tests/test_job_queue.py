@@ -171,7 +171,7 @@ def test_worker_dispatches_skill_jobs_through_skill_handler(client, monkeypatch)
     )
     captured = {}
 
-    async def fake_execute(skill_id, payload, session, actor):
+    async def fake_execute(skill_id, payload, response, session, actor, idempotency_key=None):
         captured["skill_id"] = skill_id
         captured["inputs"] = payload.inputs
         captured["idempotency_key"] = idempotency_key
