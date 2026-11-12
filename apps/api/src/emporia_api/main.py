@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from emporia_api.actions.api import router as actions_router
 from emporia_api.agents.registry import get_agent, list_agents
 from emporia_api.auth import (
     Principal,
@@ -98,6 +99,7 @@ from emporia_api.usage import router as usage_router
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.include_router(usage_router)
+app.include_router(actions_router)
 SessionDep = Annotated[Session, Depends(get_session)]
 AuthDep = Annotated[Principal, Depends(get_current_principal)]
 

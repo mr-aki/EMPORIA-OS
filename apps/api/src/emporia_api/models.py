@@ -239,3 +239,55 @@ class BackgroundJob(Base):
         except (TypeError, ValueError):
             return {}
         return value if isinstance(value, dict) else {}
+
+
+
+class BusinessActionRequest(Base):
+    __tablename__ = "business_action_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "idempotency_key",
+            name="uq_business_action_idempotency",
+        ),
+        Index("ix_business_action_requests_status_requested_at", "status", "requested_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    action_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    target_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    inputs_json: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), default="pending_approval", server_default="pending_approval", nullable=False
+    )
+    requested_by: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    approved_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    rejected_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    decision_note: Mapped[str] = mapped_column(Text, default="", server_default="", nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    execution_block_reason: Mapped[str] = mapped_column(
+        Text, default="", server_default="", nullable=False
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def inputs(self) -> dict[str, Any]:
+        try:
+            value = json.loads(self.inputs_json or "{}")
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
