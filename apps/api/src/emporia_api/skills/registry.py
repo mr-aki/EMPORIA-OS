@@ -252,6 +252,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
        N("supplier_unit_cost","Supplier unit cost","Supplier cost per unit.",minimum=0),
        N("freight_total","Total freight","Total shipment freight cost.",minimum=0),
        N("duty_rate_percent","Duty rate percent","Operator-supplied rate; specify taxable base in notes.",minimum=0,maximum=100),
+       N("duty_base_per_unit","Duty base per unit","Operator-supplied customs duty base per unit; defaults to supplier unit cost.",False,minimum=0),
        N("other_costs_per_unit","Other cost per unit","Insurance, inspection, packaging, other costs.",minimum=0),
        N("selling_price","Selling price","Expected selling price per unit.",minimum=0),
        N("channel_fee_percent","Channel fee percent","Variable fee on selling price.",False,minimum=0,maximum=100)),
