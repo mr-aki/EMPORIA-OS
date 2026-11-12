@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -53,5 +54,18 @@ class AgentRun(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    research_sources_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def research_sources(self) -> list[dict[str, object]]:
+        try:
+            value = json.loads(self.research_sources_json or "[]")
+        except (TypeError, ValueError):
+            return []
+        return value if isinstance(value, list) else []
+
+    @research_sources.setter
+    def research_sources(self, value: list[dict[str, object]]) -> None:
+        self.research_sources_json = json.dumps(value, ensure_ascii=False)
