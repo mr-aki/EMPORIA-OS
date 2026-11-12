@@ -49,7 +49,7 @@ def test_missing_venture_is_not_found(client, auth_headers):
 
 def test_ai_provider_catalog_requires_auth_and_never_exposes_secrets(client):
     assert client.get("/api/v1/ai/providers").status_code == 401
-    response = client.get("/api/v1/ai/providers", headers={"Authorization": "Bearer test-secret"})
+    response = client.get("/api/v1/ai/providers", headers=auth_headers)
     assert response.status_code == 200
     providers = response.json()
     assert {item["id"] for item in providers} == {
@@ -315,3 +315,112 @@ def test_agent_research_bounds_task_size_before_external_call(client, auth_heade
         },
     )
     assert response.status_code == 422
+
+
+def test_auth_registration_login_and_workspace_isolation(client, auth_headers):
+    first_workspace = client.get("/api/v1/auth/me", headers=auth_headers)
+    assert first_workspace.status_code == 200
+    assert first_workspace.json()["email"] == "test@example.local"
+    primary_workspace_id = first_workspace.json()["workspaces"][0]["id"]
+
+    first_venture = client.post(
+        "/api/v1/ventures",
+        headers=auth_headers,
+        json={"name": "Primary workspace venture"},
+    )
+    assert first_venture.status_code == 201
+
+    created_workspace = client.post(
+        "/api/v1/auth/workspaces",
+        headers=auth_headers,
+        json={"name": "Second business"},
+    )
+    assert created_workspace.status_code == 201
+    second_workspace_id = created_workspace.json()["id"]
+    assert second_workspace_id != primary_workspace_id
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "test@example.local",
+            "password": "VeryStrongTestPassword!2026",
+            "workspace_id": second_workspace_id,
+        },
+    )
+    assert login.status_code == 200
+    second_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    second_venture = client.post(
+        "/api/v1/ventures",
+        headers=second_headers,
+        json={"name": "Second workspace venture"},
+    )
+    assert second_venture.status_code == 201
+
+    first_names = [
+        item["name"]
+        for item in client.get("/api/v1/ventures", headers=auth_headers).json()
+    ]
+    second_names = [
+        item["name"]
+        for item in client.get("/api/v1/ventures", headers=second_headers).json()
+    ]
+    assert first_names == ["Primary workspace venture"]
+    assert second_names == ["Second workspace venture"]
+
+
+def test_workspace_membership_is_rechecked_and_viewers_cannot_write(client, auth_headers):
+    from sqlalchemy import select
+
+    from emporia_api.database import SessionLocal
+    from emporia_api.models import WorkspaceMembership
+
+    me = client.get("/api/v1/auth/me", headers=auth_headers).json()
+    workspace_id = me["workspaces"][0]["id"]
+
+    with SessionLocal() as session:
+        membership = session.scalar(
+            select(WorkspaceMembership).where(
+                WorkspaceMembership.workspace_id == workspace_id
+            )
+        )
+        membership.role = "viewer"
+        session.commit()
+
+    assert client.get("/api/v1/ventures", headers=auth_headers).status_code == 200
+    denied = client.post(
+        "/api/v1/ventures",
+        headers=auth_headers,
+        json={"name": "Viewer cannot write"},
+    )
+    assert denied.status_code == 403
+
+
+def test_login_does_not_disclose_whether_email_exists(client):
+    wrong_password = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.local", "password": "wrong-password"},
+    )
+    assert wrong_password.status_code == 401
+
+    wrong_password_existing = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.local", "password": "wrong-password"},
+    )
+    assert wrong_password_existing.status_code == 401
+
+
+def test_registration_can_be_disabled(client, monkeypatch):
+    from emporia_api.config import settings
+
+    monkeypatch.setattr(settings, "allow_registration", False)
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "blocked@example.local",
+            "password": "AnotherStrongPassword!2026",
+            "display_name": "Blocked User",
+            "workspace_name": "Blocked Workspace",
+        },
+    )
+    assert response.status_code == 403
