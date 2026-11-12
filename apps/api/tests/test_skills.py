@@ -254,3 +254,63 @@ def test_numeric_bounds_are_returned_in_skill_input_contract(client, auth_header
     assert inputs["duty_rate_percent"]["minimum"] == 0
     assert inputs["duty_rate_percent"]["maximum"] == 100
     assert inputs["units_per_shipment"]["minimum"] == 1
+
+
+
+def test_skill_run_enforces_server_output_token_limit_before_persisting(
+    client, auth_headers, monkeypatch
+):
+    monkeypatch.setattr("emporia_api.main.settings.skill_max_output_tokens", 256)
+    response = client.post(
+        "/api/v1/skills/market-opportunity-scan/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": MARKET_INPUTS,
+            "max_tokens": 257,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Requested max_tokens exceeds the server skill output limit of 256"
+    )
+    assert client.get("/api/v1/skill-runs", headers=auth_headers).json() == []
+
+
+def test_skill_run_finalizes_unexpected_provider_exception_safely(
+    client, auth_headers, monkeypatch
+):
+    class BrokenGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            raise RuntimeError("private-upstream-token-must-not-leak")
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", BrokenGateway())
+    response = client.post(
+        "/api/v1/skills/market-opportunity-scan/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": MARKET_INPUTS,
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Unexpected skill execution failure"
+    assert "private-upstream-token-must-not-leak" not in response.text
+
+    history = client.get("/api/v1/skill-runs", headers=auth_headers).json()
+    assert history[0]["status"] == "failed"
+    assert history[0]["error_message"] == "Unexpected skill execution failure"
+    assert history[0]["completed_at"] is not None
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(
+        event["action"] == "skill.run.failed"
+        and event["detail"] == "provider_unexpected_failure"
+        for event in events
+    )
