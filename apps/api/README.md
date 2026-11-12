@@ -440,3 +440,19 @@ jobs because it has no persisted account membership to revalidate.
 Jobs dispatch only the existing advisory agent and skill handlers. No browser, shell, store
 admin, payment, order, campaign, or other external business-action tools are granted. Use
 PostgreSQL for multi-worker deployments; SQLite is intended for local/single-process testing.
+
+
+## Governed business actions
+
+The API includes a workspace-scoped approval workflow for allow-listed commerce proposals. It is a governance layer, **not a live storefront/payment executor**.
+
+- `GET /api/v1/actions/catalog` — list action contracts and risk labels.
+- `POST /api/v1/actions/requests` — persist a proposal; optional idempotency key prevents duplicates.
+- `GET /api/v1/actions/requests` and `GET /api/v1/actions/requests/{request_id}` — list and inspect workspace requests.
+- `POST /api/v1/actions/requests/{request_id}/approve` and `/reject` — owner/admin decisions with a mandatory second person; requesters cannot decide their own proposals.
+- `POST /api/v1/actions/requests/{request_id}/cancel` — requester or workspace admin cancellation.
+- `POST /api/v1/actions/requests/{request_id}/execute` — fail-closed gate; returns HTTP 409 and audits the block because no reviewed executor is registered.
+
+The allow-list currently covers product catalogue updates, inventory adjustments, campaign publication, and order refunds. Proposal inputs have strict field validation, a 16 KB payload ceiling, recursive secret-field rejection, workspace-unique idempotency, and audit events. Owner-only team onboarding can add an already registered account to the current workspace as an admin, operator, or viewer; it is not an email invitation flow.
+
+All current catalogue entries report `executor_available=false`. Approving a request does not modify any live store, inventory, campaign, order, payment method, or customer record. A future external adapter must be separately reviewed for scopes, idempotency, preconditions, budget limits, dry-run behavior, verification, observability, and compensation before it can be enabled.
