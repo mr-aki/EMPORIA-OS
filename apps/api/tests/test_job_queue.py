@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -14,6 +15,7 @@ from emporia_api.models import (
     AuditEvent,
     BackgroundJob,
     WorkspaceMembership,
+    WorkspaceModelPrice,
     utcnow,
 )
 from emporia_api.worker import _renew_job_lease, run_one_job
@@ -394,3 +396,53 @@ def test_worker_executes_multi_query_research_agent_job_end_to_end(
                 )
             ).all()
         )
+
+def test_worker_settles_cost_from_the_workspace_model_price_snapshot(
+    client, monkeypatch
+):
+    from emporia_api.providers import ProviderReply
+
+    job_id, workspace_id, user_id = create_job(client)
+    with SessionLocal() as session:
+        session.add(
+            WorkspaceModelPrice(
+                workspace_id=workspace_id,
+                provider="openai",
+                model="gpt-5",
+                input_usd_per_million_tokens=Decimal(2),
+                output_usd_per_million_tokens=Decimal(8),
+                updated_by=user_id,
+            )
+        )
+        session.commit()
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            return ProviderReply(
+                provider=request.provider,
+                model=request.model,
+                content="Queued run with a cost snapshot.",
+                prompt_tokens=123,
+                completion_tokens=45,
+                total_tokens=168,
+                request_id="queued-cost-ledger-test",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    assert asyncio.run(run_one_job("worker-cost-ledger")) is True
+
+    job = get_job(job_id)
+    assert job.status == "succeeded"
+    assert job.result_id is not None
+    with SessionLocal() as session:
+        run = session.get(AgentRun, job.result_id)
+        assert run is not None
+        assert run.workspace_id == workspace_id
+        assert run.status == "completed"
+        assert run.input_price_usd_per_million_tokens == Decimal("2.0000000000")
+        assert run.output_price_usd_per_million_tokens == Decimal("8.0000000000")
+        assert run.estimated_cost_usd == Decimal("0.0006060000000000")
+
