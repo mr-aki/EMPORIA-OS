@@ -222,8 +222,8 @@ def test_research_search_validates_query_and_context_budget(client, auth_headers
 
 
 def test_agent_can_include_network_research_context(client, auth_headers, monkeypatch):
-    from emporia_api.providers import ProviderReply
     from emporia_api.network.brave_search import ResearchSource, WebResearchResult
+    from emporia_api.providers import ProviderReply
 
     class FakeGateway:
         def configured(self, provider):
