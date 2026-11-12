@@ -56,7 +56,8 @@ def test_action_catalog_is_allow_listed_and_has_no_live_executors(client, auth_h
 
 
 def test_action_request_is_persisted_and_idempotent(client, auth_headers):
-    payload = _inventory_payload(idempotency_key="inventory-cycle-count-2026-01")
+    payload = _inventory_payload()
+    payload["idempotency_key"] = "inventory-cycle-count-2026-01"
     first = client.post("/api/v1/actions/requests", json=payload, headers=auth_headers)
     second = client.post("/api/v1/actions/requests", json=payload, headers=auth_headers)
 
