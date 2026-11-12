@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./emporia.db"
     api_token: str = "change-me-before-deploy"
     workspace_id: str = "local-workspace"
+    auto_create_schema: bool = False
     cors_origins: str = ""
     agent_max_output_tokens: int = Field(default=2048, ge=1, le=4096)
     skill_max_output_tokens: int = Field(default=2048, ge=1, le=4096)
