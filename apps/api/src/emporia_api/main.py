@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -16,7 +15,7 @@ from emporia_api.auth import (
     verify_password,
 )
 from emporia_api.config import settings
-from emporia_api.database import Base, engine, get_session
+from emporia_api.database import get_session
 from emporia_api.models import (
     AgentRun,
     AuditEvent,
@@ -55,13 +54,7 @@ from emporia_api.schemas import (
 )
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    yield
-
-
-app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.1.0")
 SessionDep = Annotated[Session, Depends(get_session)]
 AuthDep = Annotated[Principal, Depends(get_current_principal)]
 
