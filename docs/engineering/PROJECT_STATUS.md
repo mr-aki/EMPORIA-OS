@@ -73,7 +73,7 @@ Prefer a small end-to-end capability that is real, testable, observable, and saf
 
 ## Skills implementation slice
 
-The Skills runtime adds a versioned 30-skill commerce catalog across two reviewed implementation packs with typed input contracts,
+The Skills runtime adds a versioned 45-skill commerce catalog across two reviewed implementation packs with typed input contracts,
 unknown-field rejection, bounded payload validation, authenticated provider-backed
 execution, persisted workspace-scoped run history, and start/completion/failure audit
 events. Skills execute as advisory analysis only; they do not grant store, payment,
@@ -87,3 +87,11 @@ inspection planning, supplier continuity/quote analysis, stock aging, fulfilment
 economics, and promotional calendar planning. Each definition has a typed contract,
 ordered procedure, output schema headings, and explicit guardrails. Pack v2 remains
 advisory and requires its own CI and evaluation evidence before any production claim.
+
+
+The third Skills pack adds pricing-response and discount planning, lifecycle segmentation,
+subscription retention, support taxonomy and complaint analysis, launch readiness and
+market entry, marketplace-policy and claims evidence review, paid-media creative and
+campaign audits, lifecycle email planning, commerce content calendars, and localization.
+Policy/claims skills evaluate supplied materials only and are not live legal or marketplace
+policy verification. The third pack requires its own CI and evaluation evidence.
