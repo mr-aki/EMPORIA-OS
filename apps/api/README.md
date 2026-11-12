@@ -147,8 +147,39 @@ Passwords require at least 12 characters and are hashed with Argon2 through pwdl
 - PATCH /api/v1/ventures/{id}
 - DELETE /api/v1/ventures/{id}
 - GET /api/v1/audit-events
+- POST /api/v1/products
+- GET /api/v1/products?status=active&search=bottle&limit=50&offset=0
+- GET /api/v1/products/{id}
+- PATCH /api/v1/products/{id}
+- DELETE /api/v1/products/{id}
 
-Venture and audit records are filtered to the workspace derived from the authenticated principal. Mutations append audit events in the same database transaction.
+Venture, product, and audit records are filtered to the workspace derived from the authenticated principal. Mutations append audit events in the same database transaction.
+
+### Product catalog
+
+Products are workspace-owned catalog records with a case-normalized SKU, name, description, vendor, product type, lifecycle status (`draft`, `active`, or `archived`), Decimal price and optional cost, and ISO 4217-style three-letter currency code. SKUs are unique within a workspace; the database constraint is the final arbiter for concurrent duplicate creates. All writes require the workspace owner, admin, or operator role; viewers can list and read but cannot create, change, or delete products.
+
+Example create request:
+
+~~~http
+POST /api/v1/products
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "sku": "BOTTLE-001",
+  "name": "Everyday Water Bottle",
+  "description": "Reusable stainless steel bottle",
+  "vendor": "Northwind Supply",
+  "product_type": "Drinkware",
+  "status": "draft",
+  "price_amount": "24.9900",
+  "cost_amount": "8.5000",
+  "currency": "USD"
+}
+~~~
+
+The catalog list supports optional status and free-text search across SKU, name, vendor, and product type, with bounded `limit` and `offset` pagination. Currency is normalized to uppercase. Price and cost accept non-negative values up to four decimal places. Duplicate SKUs return HTTP 409; cross-workspace product IDs return HTTP 404 to avoid disclosing another workspace's records. Deletion removes the catalog row but preserves its `product.deleted` audit event. This first catalog slice does not claim inventory quantity tracking, variants, media assets, marketplace synchronization, or live store integrations.
 
 ### AI provider gateway
 
