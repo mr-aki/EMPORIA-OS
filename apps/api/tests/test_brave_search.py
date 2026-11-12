@@ -138,7 +138,7 @@ def test_brave_search_requires_server_side_api_key():
         ("", 4096, "US", "en"),
         ("x" * 601, 4096, "US", "en"),
         ("valid query", 1023, "US", "en"),
-        ("valid query", 8193, "US", "en"),
+        ("valid query", 32769, "US", "en"),
         ("valid query", 4096, "USA", "en"),
         ("valid query", 4096, "US", "e"),
         ("valid query", 4096, "US", "en-verylong"),
