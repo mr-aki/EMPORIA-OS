@@ -328,6 +328,7 @@ class SkillRunRead(BaseModel):
     completion_tokens: int
     total_tokens: int
     provider_request_id: str | None
+    calculations: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     completed_at: datetime | None
 
