@@ -574,7 +574,7 @@ def test_third_skill_pack_has_complete_versioned_contracts():
     from emporia_api.skills.registry import SKILLS, get_skill
 
     ids = {skill.id for skill in SKILLS}
-    assert len(ids) == 45
+    assert len(ids) == 60
     assert THIRD_PACK_SKILL_IDS <= ids
 
     for skill_id in THIRD_PACK_SKILL_IDS:
