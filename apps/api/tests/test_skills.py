@@ -799,3 +799,26 @@ def test_finance_skill_runs_return_authoritative_calculation_payload(client, aut
     body = response.json()
     assert body["calculations"]["contribution_after_advertising"] == 3400
     assert body["skill_version"] == "1.0.0"
+
+
+def test_skill_numeric_validation_rejects_unrepresentable_large_integers(client, auth_headers):
+    response = client.post(
+        "/api/v1/skills/customer-acquisition-cost-review/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "currency": "USD",
+                "media_spend": 10**400,
+                "agency_fees": 0,
+                "creative_cost": 0,
+                "measurement_tool_cost": 0,
+                "new_customers": 1,
+                "attribution_method": "First-party deduplicated cohort",
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert "media_spend" in str(response.json()["detail"])
