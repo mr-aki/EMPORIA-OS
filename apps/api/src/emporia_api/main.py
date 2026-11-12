@@ -30,6 +30,7 @@ from emporia_api.models import (
 from emporia_api.network.brave_search import (
     BraveSearchClient,
     ResearchNotConfigured,
+    ResearchRateLimited,
     ResearchRequestError,
 )
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
@@ -301,7 +302,11 @@ async def execute_agent(
     if payload.web_research:
         # The separate query is explicit consent to send only that query to Brave.
         try:
-            research = await brave_search_client.search(payload.research_query or "")
+            research = await brave_search_client.search(
+                payload.research_query or "",
+                country=payload.research_country,
+                search_lang=payload.research_lang,
+            )
         except ResearchNotConfigured as exc:
             run.status = "failed"
             run.error_message = str(exc)
@@ -316,6 +321,24 @@ async def execute_agent(
             ))
             session.commit()
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ResearchRateLimited as exc:
+            run.status = "failed"
+            run.error_message = str(exc)
+            run.completed_at = utcnow()
+            session.add(AuditEvent(
+                workspace_id=actor.workspace_id,
+                actor=actor.user_id,
+                action="agent.run.failed",
+                resource_type="agent_run",
+                resource_id=run.id,
+                detail="research_rate_limited",
+            ))
+            session.commit()
+            raise HTTPException(
+                status_code=429,
+                detail=str(exc),
+                headers={"Retry-After": str(int(exc.retry_after))},
+            ) from exc
         except ResearchRequestError as exc:
             run.status = "failed"
             run.error_message = str(exc)
@@ -484,9 +507,17 @@ async def search_web(payload: ResearchQuery, session: SessionDep, actor: AuthDep
         result = await brave_search_client.search(
             payload.query,
             maximum_number_of_tokens=payload.maximum_number_of_tokens,
+            country=payload.country,
+            search_lang=payload.search_lang,
         )
     except ResearchNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ResearchRateLimited as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(int(exc.retry_after))},
+        ) from exc
     except ResearchRequestError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
