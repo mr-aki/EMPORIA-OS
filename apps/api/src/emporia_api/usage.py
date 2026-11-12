@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status as fastapi_status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -511,7 +511,7 @@ def set_model_price(
 
 @router.delete(
     "/pricing/{provider}/{model}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=fastapi_status.HTTP_204_NO_CONTENT,
 )
 def delete_model_price(
     provider: ProviderName,
@@ -546,7 +546,7 @@ def delete_model_price(
     ))
     session.delete(price)
     session.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=fastapi_status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/costs", response_model=CostSummary)
