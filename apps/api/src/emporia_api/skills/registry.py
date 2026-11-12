@@ -16,6 +16,8 @@ class SkillInput:
     description: str
     max_length: int = 4000
     max_items: int = 30
+    minimum: float | None = None
+    maximum: float | None = None
 
     def public_metadata(self) -> dict[str, Any]:
         return {
@@ -26,6 +28,8 @@ class SkillInput:
             "description": self.description,
             "max_length": self.max_length if self.value_type == "text" else None,
             "max_items": self.max_items if self.value_type == "array" else None,
+            "minimum": self.minimum if self.value_type == "number" else None,
+            "maximum": self.maximum if self.value_type == "number" else None,
         }
 
 
@@ -84,8 +88,13 @@ def T(key: str, label: str, desc: str, required: bool = True,
     return SkillInput(key, label, "text", required, desc, max_length=max_length)
 
 
-def N(key: str, label: str, desc: str, required: bool = True) -> SkillInput:
-    return SkillInput(key, label, "number", required, desc)
+def N(
+    key: str, label: str, desc: str, required: bool = True,
+    minimum: float | None = None, maximum: float | None = None,
+) -> SkillInput:
+    return SkillInput(
+        key, label, "number", required, desc, minimum=minimum, maximum=maximum
+    )
 
 
 def O(key: str, label: str, desc: str, required: bool = True) -> SkillInput:
@@ -142,7 +151,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Extract useful customer patterns while preserving minority signals and evidence limits.",
       (T("customer_segment","Customer segment","Segment represented in the material."),
        T("interview_notes","Research notes","Anonymized interview, review, or support notes.",True,12000),
-       N("sample_size","Sample size","Number of people or records represented.",False)),
+       N("sample_size","Sample size","Number of people or records represented.",False,minimum=1)),
       ("Summarize sample, collection method, and limitations.",
        "Code recurring jobs, triggers, anxieties, workarounds, objections, and desired outcomes.",
        "Distinguish frequency from severity; preserve contradictory and minority evidence.",
@@ -158,8 +167,8 @@ SKILLS: tuple[SkillDefinition, ...] = (
       (T("product_concept","Product concept","What is proposed and the problem addressed."),
        T("target_customer","Target customer","Primary customer segment."),
        T("riskiest_assumption","Riskiest assumption","Assumption most likely to invalidate the concept."),
-       N("budget","Available budget","Experiment budget and currency context.",False),
-       N("timeline_days","Timeline in days","Time available for validation.",False)),
+       N("budget","Available budget","Experiment budget and currency context.",False,minimum=0),
+       N("timeline_days","Timeline in days","Time available for validation.",False,minimum=1)),
       ("Break concept into desirability, feasibility, viability, and channel assumptions.",
        "Rank assumptions by impact, uncertainty, and cost of being wrong.",
        "Choose the smallest credible experiment for each critical assumption.",
@@ -175,7 +184,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       (T("product_title","Product title","Current product name or headline."),
        T("target_customer","Target customer","Intended buyer and context."),
        T("page_copy","Page content","Paste page text, details, FAQs, and policies.",True,12000),
-       N("price","Displayed price","Current price and currency context.",False),
+       N("price","Displayed price","Current price and currency context.",False,minimum=0),
        T("primary_traffic_source","Primary traffic source","Main acquisition source, if known.",False)),
       ("Check message match between customer, promise, and supplied traffic context.",
        "Review title, value, benefits, proof, specs, price, FAQs, and calls to action.",
@@ -222,7 +231,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Turn a product brief into a supplier-ready quotation request and comparison template.",
       "Reduce ambiguity in supplier quotes and make offers comparable.",
       (O("product_spec","Product specification","Materials, dimensions, tolerance, packaging, quality."),
-       N("requested_quantity","Requested quantity","Order quantity and unit."),
+       N("requested_quantity","Requested quantity","Order quantity and unit.",minimum=1),
        T("destination","Delivery destination","Destination and preferred Incoterm, if known."),
        T("target_delivery_date","Target delivery date","Required arrival or ship date.",False),
        A("compliance_requirements","Compliance requirements","Known standards, documents, and tests.",False)),
@@ -239,13 +248,13 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Model per-unit landed cost, fees, contribution, and sensitivity using supplied inputs.",
       "Show transparent unit economics and the assumptions that change profitability.",
       (T("currency","Currency","Currency code for all monetary inputs."),
-       N("units_per_shipment","Units per shipment","Units over which shipment costs are allocated."),
-       N("supplier_unit_cost","Supplier unit cost","Supplier cost per unit."),
-       N("freight_total","Total freight","Total shipment freight cost."),
-       N("duty_rate_percent","Duty rate percent","Operator-supplied rate; specify taxable base in notes."),
-       N("other_costs_per_unit","Other cost per unit","Insurance, inspection, packaging, other costs."),
-       N("selling_price","Selling price","Expected selling price per unit."),
-       N("channel_fee_percent","Channel fee percent","Variable fee on selling price.",False)),
+       N("units_per_shipment","Units per shipment","Units over which shipment costs are allocated.",minimum=1),
+       N("supplier_unit_cost","Supplier unit cost","Supplier cost per unit.",minimum=0),
+       N("freight_total","Total freight","Total shipment freight cost.",minimum=0),
+       N("duty_rate_percent","Duty rate percent","Operator-supplied rate; specify taxable base in notes.",minimum=0,maximum=100),
+       N("other_costs_per_unit","Other cost per unit","Insurance, inspection, packaging, other costs.",minimum=0),
+       N("selling_price","Selling price","Expected selling price per unit.",minimum=0),
+       N("channel_fee_percent","Channel fee percent","Variable fee on selling price.",False,minimum=0,maximum=100)),
       ("Validate units, currencies, percentages, and shipment cost allocation.",
        "Calculate freight per unit and state duty base; show alternatives if unclear.",
        "Calculate landed cost, channel fee, contribution, and margin.",
@@ -259,12 +268,12 @@ SKILLS: tuple[SkillDefinition, ...] = (
       "Estimate reorder timing and quantity from demand, lead time, buffer, and inbound stock.",
       "Provide transparent replenishment guidance with stockout and overstock risks.",
       (T("sku","SKU","Product or SKU identifier."),
-       N("on_hand_units","On-hand units","Sellable inventory currently available."),
-       N("average_daily_demand","Average daily demand","Average daily unit demand over a stated period."),
-       N("supplier_lead_time_days","Supplier lead time","Expected replenishment lead time in days."),
-       N("safety_stock_units","Safety stock","Target buffer units."),
-       N("inbound_units","Inbound units","Confirmed incoming units.",False),
-       N("minimum_order_quantity","Minimum order quantity","Supplier MOQ, if known.",False)),
+       N("on_hand_units","On-hand units","Sellable inventory currently available.",minimum=0),
+       N("average_daily_demand","Average daily demand","Average daily unit demand over a stated period.",minimum=0),
+       N("supplier_lead_time_days","Supplier lead time","Expected replenishment lead time in days.",minimum=0),
+       N("safety_stock_units","Safety stock","Target buffer units.",minimum=0),
+       N("inbound_units","Inbound units","Confirmed incoming units.",False,minimum=0),
+       N("minimum_order_quantity","Minimum order quantity","Supplier MOQ, if known.",False,minimum=1)),
       ("Validate that counts and demand use consistent units and periods.",
        "Calculate lead-time demand and reorder point as demand times lead time plus safety stock.",
        "Calculate inventory position from on-hand and confirmed inbound; flag allocations if unknown.",
@@ -277,12 +286,12 @@ SKILLS: tuple[SkillDefinition, ...] = (
     S("pricing-promotion-review", "Pricing and Promotion Review", "pricing",
       "Assess price and discount choices against cost, fees, and target contribution margin.",
       "Make discount economics visible before a promotion is approved.",
-      (N("unit_landed_cost","Unit landed cost","Estimated landed cost per unit."),
-       N("current_price","Current selling price","Current price per unit."),
-       N("marketplace_fee_percent","Marketplace fee percent","Variable fee on selling price."),
-       N("target_contribution_margin_percent","Target margin percent","Target before omitted fixed and marketing costs."),
-       N("payment_fee_percent","Payment fee percent","Additional variable payment fee.",False),
-       N("promo_discount_percent","Proposed discount percent","Discount against current price.",False)),
+      (N("unit_landed_cost","Unit landed cost","Estimated landed cost per unit.",minimum=0),
+       N("current_price","Current selling price","Current price per unit.",minimum=0),
+       N("marketplace_fee_percent","Marketplace fee percent","Variable fee on selling price.",minimum=0,maximum=100),
+       N("target_contribution_margin_percent","Target margin percent","Target before omitted fixed and marketing costs.",minimum=0,maximum=100),
+       N("payment_fee_percent","Payment fee percent","Additional variable payment fee.",False,minimum=0,maximum=100),
+       N("promo_discount_percent","Proposed discount percent","Discount against current price.",False,minimum=0,maximum=100)),
       ("Validate currency consistency and percentage ranges.",
        "Calculate current and promotional realized price after discount.",
        "Subtract landed cost and variable fees to estimate contribution and margin.",
@@ -299,8 +308,8 @@ SKILLS: tuple[SkillDefinition, ...] = (
        T("target_customer","Target customer","Audience, need state, and buying context."),
        T("offer","Offer or message","Product, offer, promise, and constraints."),
        A("channels","Channels","Channels under consideration.",True,12),
-       N("budget","Budget","Available budget and currency context."),
-       N("timeframe_days","Timeframe in days","Campaign duration."),
+       N("budget","Budget","Available budget and currency context.",minimum=0),
+       N("timeframe_days","Timeframe in days","Campaign duration.",minimum=1),
        T("constraints","Constraints","Brand, legal, inventory, creative, or operational limits.",False)),
       ("Clarify objective and distinguish leading indicators from business outcomes.",
        "Define audience insight, message, proof, offer, objections, and creative angle.",
@@ -391,7 +400,7 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
                 errors.append(f"Input '{field.key}' cannot be null")
             continue
         if field.value_type == "text":
-            valid = isinstance(value, str) and bool(value.strip())
+            valid = isinstance(value, str) and (bool(value.strip()) or not field.required)
             if valid and len(value) > field.max_length:
                 errors.append(f"Input '{field.key}' exceeds {field.max_length} characters")
                 continue
@@ -399,10 +408,16 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
             valid = isinstance(value, (int, float)) and not isinstance(value, bool)
             if valid and isinstance(value, float):
                 valid = math.isfinite(value)
+            if valid and field.minimum is not None and value < field.minimum:
+                errors.append(f"Input '{field.key}' must be at least {field.minimum}")
+                continue
+            if valid and field.maximum is not None and value > field.maximum:
+                errors.append(f"Input '{field.key}' must be at most {field.maximum}")
+                continue
         elif field.value_type == "object":
-            valid = isinstance(value, dict) and bool(value)
+            valid = isinstance(value, dict) and (bool(value) or not field.required)
         else:
-            valid = isinstance(value, list) and bool(value)
+            valid = isinstance(value, list) and (bool(value) or not field.required)
             if valid and len(value) > field.max_items:
                 errors.append(f"Input '{field.key}' exceeds {field.max_items} items")
                 continue
