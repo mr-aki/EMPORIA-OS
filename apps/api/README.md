@@ -456,3 +456,29 @@ The API includes a workspace-scoped approval workflow for allow-listed commerce 
 The allow-list currently covers product catalogue updates, inventory adjustments, campaign publication, and order refunds. Proposal inputs have strict field validation, a 16 KB payload ceiling, recursive secret-field rejection, workspace-unique idempotency, and audit events. Owner-only team onboarding can add an already registered account to the current workspace as an admin, operator, or viewer; it is not an email invitation flow.
 
 All current catalogue entries report `executor_available=false`. Approving a request does not modify any live store, inventory, campaign, order, payment method, or customer record. A future external adapter must be separately reviewed for scopes, idempotency, preconditions, budget limits, dry-run behavior, verification, observability, and compensation before it can be enabled.
+
+
+## Workspace model pricing and cost estimates
+
+Configure per-workspace USD rates per one million input and output tokens. Pricing is operator-supplied; Emporia never guesses a model's price.
+
+```http
+PUT /api/v1/usage/pricing/openai/gpt-5
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "input_usd_per_million_tokens": "2.50",
+  "output_usd_per_million_tokens": "10.00"
+}
+```
+
+- `GET /api/v1/usage/pricing` lists configured rates for the authenticated workspace.
+- `PUT /api/v1/usage/pricing/{provider}/{model}` creates or updates a rate for future executions.
+- `DELETE /api/v1/usage/pricing/{provider}/{model}` removes a rate for future executions.
+- `GET /api/v1/usage/costs` returns estimated USD totals, agent/skill and provider/model breakdowns, daily totals, and priced/unpriced counts. It accepts the same inclusive UTC `start_date` and `end_date` filters as usage summaries.
+
+When a run is created, its configured input/output rates are snapshotted before contacting the provider. The resulting estimate uses exact Decimal arithmetic and is calculated only when the provider returns both prompt and completion token counts. Updating or deleting a rate does not rewrite historical run snapshots. Unknown rates or missing provider token counts remain explicitly unpriced.
+
+**Accounting boundary:** these are estimates for persisted agent and skill runs, not provider invoices, spend caps, or ledger-grade charges. Direct chat requests, web research/search fees, taxes, discounts, and contractual adjustments are excluded. Workspace operators are responsible for keeping configured rates aligned with their provider contracts.
+
