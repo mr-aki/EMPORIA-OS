@@ -186,6 +186,28 @@ def test_agent_run_persists_output_usage_and_audit(client, auth_headers, monkeyp
     assert any(event["action"] == "agent.run.completed" for event in events)
 
 
+def test_agent_run_enforces_server_output_token_limit_before_persisting(
+    client, auth_headers, monkeypatch
+):
+    monkeypatch.setattr("emporia_api.main.settings.agent_max_output_tokens", 256)
+    response = client.post(
+        "/api/v1/agents/commerce-strategist/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Create a launch plan.",
+            "max_tokens": 257,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Requested max_tokens exceeds the server agent output limit of 256"
+    )
+    assert client.get("/api/v1/agent-runs", headers=auth_headers).json() == []
+
+
 def test_agent_run_records_provider_configuration_failure(client, auth_headers):
     response = client.post(
         "/api/v1/agents/product-research-analyst/runs",
