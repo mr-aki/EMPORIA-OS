@@ -11,6 +11,7 @@ cd apps/api
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+alembic upgrade head
 export EMPORIA_API_TOKEN="local-development-token-change-this"
 uvicorn emporia_api.main:app --reload
 ```
@@ -36,7 +37,7 @@ docker compose up --build
 
 All settings use the `EMPORIA_` prefix. The initial deployment model is one isolated workspace per API deployment. The workspace identifier is server-side configuration; clients cannot select another tenant by supplying a header or request field. Use a unique API token per deployment and terminate TLS at a trusted reverse proxy before exposing the service.
 
-SQLite is the zero-dependency local default. Set `EMPORIA_DATABASE_URL` to a PostgreSQL SQLAlchemy URL for a shared deployment; production migration management and multi-user identity are subsequent milestones, not claimed in this slice.
+SQLite is the zero-dependency local default. Set `EMPORIA_DATABASE_URL` to a PostgreSQL SQLAlchemy URL for a shared deployment. Apply schema changes with `alembic upgrade head` before starting the API; the Docker image runs this migration command before Uvicorn. The initial migration creates missing tables and adds the research-source column to older `agent_runs` tables. Back up persistent databases before migrations, especially before any downgrade. Multi-user identity and production-readiness remain separate milestones.
 
 ## API
 
