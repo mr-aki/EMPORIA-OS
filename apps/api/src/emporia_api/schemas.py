@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import (
     BaseModel,
     ConfigDict,
+    EmailStr,
     Field,
     StringConstraints,
     field_validator,
@@ -112,16 +113,6 @@ class AgentRunCreate(BaseModel):
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
 
-    @field_validator("research_query", mode="before")
-    @classmethod
-    def normalize_research_query(cls, value: Any) -> Any:
-        if value is None or not isinstance(value, str):
-            return value
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("research_query must not be blank")
-        return normalized
-
     @model_validator(mode="after")
     def require_explicit_research_query(self):
         if self.web_research and not self.research_query:
@@ -170,19 +161,62 @@ class ResearchQuery(BaseModel):
     query: str = Field(min_length=1, max_length=600)
     maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
 
-    @field_validator("query", mode="before")
-    @classmethod
-    def normalize_query(cls, value: Any) -> Any:
-        if not isinstance(value, str):
-            return value
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("query must not be blank")
-        return normalized
-
 
 
 class ResearchRead(BaseModel):
     query: str
     sources: list[ResearchSourceRead]
     request_id: str | None = None
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=128)
+    display_name: str = Field(min_length=1, max_length=120)
+    workspace_name: str = Field(min_length=1, max_length=160)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+    workspace_id: str | None = Field(default=None, max_length=36)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class AuthTokenRead(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user_id: str
+    workspace_id: str
+
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
+class WorkspaceSummary(BaseModel):
+    id: str
+    name: str
+    role: str
+
+
+class WorkspaceCreated(WorkspaceSummary):
+    created_at: datetime
+
+
+class AuthMeRead(BaseModel):
+    user_id: str
+    email: EmailStr
+    display_name: str
+    is_active: bool
+    workspaces: list[WorkspaceSummary]

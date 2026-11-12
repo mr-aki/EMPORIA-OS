@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     api_token: str = "change-me-before-deploy"
     workspace_id: str = "local-workspace"
     cors_origins: str = ""
+    jwt_secret: SecretStr | None = None
+    jwt_issuer: str = "emporia-os"
+    jwt_access_token_minutes: int = 60
+    allow_registration: bool = False
+    legacy_workspace_owner_email: str | None = None
 
     # Provider credentials are server-side secrets; never return these values from an API.
     openai_api_key: SecretStr | None = None
