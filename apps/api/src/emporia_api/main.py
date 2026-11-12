@@ -55,6 +55,7 @@ from emporia_api.output_budgets import (
     OutputTokenBudgetExceeded,
     enforce_workspace_output_budget,
 )
+from emporia_api.pricing import settle_run_cost, snapshot_model_price
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
 from emporia_api.schemas import (
@@ -373,6 +374,7 @@ async def execute_agent(
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )
+    snapshot_model_price(session, run)
     run, replayed = create_run_once(
         session,
         AgentRun,
@@ -583,6 +585,7 @@ async def execute_agent(
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
+    settle_run_cost(run, reply.prompt_tokens, reply.completion_tokens)
     run.budget_charged_tokens = (
         reply.completion_tokens
         if reply.completion_tokens is not None
@@ -978,6 +981,7 @@ async def execute_skill(
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )
+    snapshot_model_price(session, run)
     run, replayed = create_run_once(
         session,
         SkillRun,
@@ -1077,6 +1081,7 @@ async def execute_skill(
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
+    settle_run_cost(run, reply.prompt_tokens, reply.completion_tokens)
     run.budget_charged_tokens = (
         reply.completion_tokens
         if reply.completion_tokens is not None
