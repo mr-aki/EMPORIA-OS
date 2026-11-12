@@ -255,7 +255,7 @@ def test_research_search_validates_query_and_context_budget(client, auth_headers
     response = client.post(
         "/api/v1/research/search",
         headers=auth_headers,
-        json={"query": "market research", "maximum_number_of_tokens": 9000},
+        json={"query": "market research", "maximum_number_of_tokens": 33000},
     )
     assert response.status_code == 422
 
