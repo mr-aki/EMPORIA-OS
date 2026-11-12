@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 from emporia_api.auth import Principal, get_current_principal
 from emporia_api.database import get_session
 from emporia_api.models import AgentRun, AuditEvent, SkillRun, WorkspaceModelPrice, utcnow
-from emporia_api.schemas import ModelName
 from emporia_api.output_budgets import (
     get_workspace_output_budget_state,
     set_workspace_output_budget,
 )
+from emporia_api.schemas import ModelName
 
 router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -163,7 +163,7 @@ def _aggregate(
         .group_by(func.date(run_model.created_at), run_model.status)
     ).all()
     daily_map: dict[date, dict[str, int]] = {}
-    for day_value, status, count, prompt, completion, total in daily_rows:
+    for day_value, day_status, count, prompt, completion, total in daily_rows:
         day = date.fromisoformat(str(day_value)[:10])
         values = daily_map.setdefault(
             day,
@@ -178,7 +178,7 @@ def _aggregate(
             },
         )
         values["runs"] += count
-        status_key = f"{status}_runs"
+        status_key = f"{day_status}_runs"
         if status_key in values:
             values[status_key] += count
         values["prompt_tokens"] += prompt
