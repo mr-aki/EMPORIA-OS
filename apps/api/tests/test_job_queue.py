@@ -133,7 +133,7 @@ def test_worker_revalidates_user_and_passes_workspace_principal(client, monkeypa
         )
         return SimpleNamespace(id="agent-run-result-1")
 
-    monkeypatch.setattr("emporia_api.worker.execute_agent", fake_execute)
+    monkeypatch.setattr("emporia_api.main.execute_agent", fake_execute)
     assert asyncio.run(run_one_job("worker-agent")) is True
     job = get_job(job_id)
     assert captured == {
