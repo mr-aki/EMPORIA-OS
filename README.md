@@ -39,7 +39,7 @@ These are product goals, not claims that every module exists today.
 | Identity and workspaces | Password-based registration/login, JWT access tokens, workspace memberships, role-based write checks, workspace isolation |
 | Audit trail | Persistent audit events for venture, AI, agent, research, and workspace lifecycle operations |
 | AI provider gateway | Server-side adapters for OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible endpoints |
-| Specialist agents | Three versioned advisory agents with persisted runs, usage, status, and history |
+| Specialist agents | Eight versioned advisory agents with category/deliverable metadata, persisted runs, usage, status, and history |
 | Web research | Explicit Brave Search LLM Context API connector with source metadata and untrusted-context handling |
 | Database lifecycle | Alembic migrations, Docker Compose startup migration, migration coverage for fresh and legacy schemas |
 
