@@ -3,7 +3,7 @@ import json
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import or_, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -325,9 +325,10 @@ def cancel_business_action_request(
             BusinessActionRequest.id == request_id,
             BusinessActionRequest.workspace_id == actor.workspace_id,
             BusinessActionRequest.status.in_(("pending_approval", "approved")),
-            or_(
-                BusinessActionRequest.requested_by == actor.user_id,
-                actor.role.in_({"owner", "admin"}),
+            *(
+                ()
+                if is_workspace_admin
+                else (BusinessActionRequest.requested_by == actor.user_id,)
             ),
         )
         .values(
