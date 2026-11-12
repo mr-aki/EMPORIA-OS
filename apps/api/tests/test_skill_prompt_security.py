@@ -19,6 +19,8 @@ GLOBAL_GUARDRAILS = (
 
 
 def test_every_registered_skill_prompt_includes_global_security_boundaries():
+    from emporia_api.skills.registry import SKILLS
+
     assert len(SKILLS) == 60
 
     for skill in SKILLS:
