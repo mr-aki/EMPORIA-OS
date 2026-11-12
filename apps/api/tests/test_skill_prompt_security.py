@@ -83,5 +83,13 @@ def test_adversarial_input_remains_in_user_message_not_system_prompt(
     )
 
     assert response.status_code == 201
-    assert response.json()["status"] == "completed"
-    assert response.json()["provider_request_id"] == "req_prompt_injection_regression"
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["provider_request_id"] == "req_prompt_injection_regression"
+    assert body["evaluation"]["evaluation_type"] == "required_section_coverage"
+    assert body["evaluation"]["passed"] is False
+    assert body["evaluation"]["missing_sections"]
+    assert any(
+        "does not verify factual accuracy" in item
+        for item in body["evaluation"]["limitations"]
+    )
