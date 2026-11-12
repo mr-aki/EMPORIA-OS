@@ -134,7 +134,7 @@ def _aggregate(
             },
         )
         row["runs"] += count
-        status_key = f"{status}_runs"
+        status_key = f"{run_status}_runs"
         if status_key in row:
             row[status_key] += count
         row["prompt_tokens"] += prompt
@@ -163,7 +163,7 @@ def _aggregate(
         .group_by(func.date(run_model.created_at), run_model.status)
     ).all()
     daily_map: dict[date, dict[str, int]] = {}
-    for day_value, status, count, prompt, completion, total in daily_rows:
+    for day_value, run_status, count, prompt, completion, total in daily_rows:
         day = date.fromisoformat(str(day_value)[:10])
         values = daily_map.setdefault(
             day,
@@ -323,7 +323,7 @@ class ModelPriceUpdate(BaseModel):
         ge=Decimal(0), max_digits=20, decimal_places=10
     )
     output_usd_per_million_tokens: Decimal = Field(
-        ge=Decimal("0"), max_digits=20, decimal_places=10
+        ge=Decimal(0), max_digits=20, decimal_places=10
     )
 
 
