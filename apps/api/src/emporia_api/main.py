@@ -14,6 +14,7 @@ from emporia_api.models import AgentRun, AuditEvent, SkillRun, Venture, utcnow
 from emporia_api.network.brave_search import (
     BraveSearchClient,
     ResearchNotConfigured,
+    ResearchRateLimited,
     ResearchRequestError,
 )
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
@@ -281,7 +282,11 @@ async def execute_agent(
     if payload.web_research:
         # The separate query is explicit consent to send only that query to Brave.
         try:
-            research = await brave_search_client.search(payload.research_query or "")
+            research = await brave_search_client.search(
+                payload.research_query or "",
+                country=payload.research_country,
+                search_lang=payload.research_lang,
+            )
         except ResearchNotConfigured as exc:
             run.status = "failed"
             run.error_message = str(exc)
@@ -296,6 +301,24 @@ async def execute_agent(
             ))
             session.commit()
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ResearchRateLimited as exc:
+            run.status = "failed"
+            run.error_message = str(exc)
+            run.completed_at = utcnow()
+            session.add(AuditEvent(
+                workspace_id=settings.workspace_id,
+                actor=actor,
+                action="agent.run.failed",
+                resource_type="agent_run",
+                resource_id=run.id,
+                detail="research_rate_limited",
+            ))
+            session.commit()
+            raise HTTPException(
+                status_code=429,
+                detail=str(exc),
+                headers={"Retry-After": str(int(exc.retry_after))},
+            ) from exc
         except ResearchRequestError as exc:
             run.status = "failed"
             run.error_message = str(exc)
@@ -463,9 +486,17 @@ async def search_web(payload: ResearchQuery, session: SessionDep, actor: AuthDep
         result = await brave_search_client.search(
             payload.query,
             maximum_number_of_tokens=payload.maximum_number_of_tokens,
+            country=payload.country,
+            search_lang=payload.search_lang,
         )
     except ResearchNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ResearchRateLimited as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(int(exc.retry_after))},
+        ) from exc
     except ResearchRequestError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -585,6 +616,7 @@ async def execute_skill(
             + json.dumps(verified_calculations, ensure_ascii=False, indent=2, sort_keys=True)
             + "\nExplain these calculations and assumptions. Do not alter or recalculate the supplied values."
         )
+
     request = ChatCompletionRequest(
         provider=payload.provider,
         model=payload.model,

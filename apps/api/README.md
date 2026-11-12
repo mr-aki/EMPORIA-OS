@@ -225,7 +225,19 @@ workspace-scoped. Input values are untrusted data and cannot grant permissions o
 the skill procedure. See ../../skills/README.md for the catalog and governance boundaries.
 
 
-Deterministic numeric skills return server-calculated values in the calculations field
-of each skill-run response. The same values are passed to the model for explanation;
-the model is instructed not to alter or recalculate them. See ../../skills/README.md
-for formulas, assumptions, and limitations.
+### Search locale and rate limits
+
+The research request accepts an explicit two-letter country code and search language:
+
+```json
+{
+  "query": "ecommerce logistics and returns benchmarks",
+  "country": "PK",
+  "search_lang": "en",
+  "maximum_number_of_tokens": 4096
+}
+```
+
+`country` is passed to Brave as its two-letter search market; `search_lang` accepts a language tag such as `en` or `zh-hans`. Defaults remain `US` and `en`; select the target market that matches the research question rather than assuming the account's location is the target market.
+
+The client spaces requests by at least one second per API process. Upstream HTTP 429 responses are surfaced as HTTP 429 with a bounded `Retry-After` value. This is a per-process guard; horizontally scaled deployments should use a shared rate limiter for a single API key. Review Brave's current [LLM Context documentation](https://api-dashboard.search.brave.com/documentation/services/llm-context) for the live contract, quotas and billing.
