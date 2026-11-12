@@ -44,3 +44,54 @@ def test_validation_rejects_empty_name(client, auth_headers):
 def test_missing_venture_is_not_found(client, auth_headers):
     response = client.get("/api/v1/ventures/does-not-exist", headers=auth_headers)
     assert response.status_code == 404
+
+
+
+def test_ai_provider_catalog_requires_auth_and_never_exposes_secrets(client):
+    assert client.get("/api/v1/ai/providers").status_code == 401
+    response = client.get("/api/v1/ai/providers", headers={"Authorization": "Bearer test-secret"})
+    assert response.status_code == 200
+    providers = response.json()
+    assert {item["id"] for item in providers} == {
+        "openai", "anthropic", "gemini", "openai-compatible"
+    }
+    assert all(item["configured"] is False for item in providers)
+    assert all("api_key" not in item and "secret" not in item for item in providers)
+
+
+def test_ai_chat_returns_clear_setup_error_when_provider_is_not_configured(client, auth_headers):
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "messages": [{"role": "user", "content": "Hello"}],
+        },
+    )
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
+
+
+def test_ai_chat_validates_model_and_requires_a_user_message(client, auth_headers):
+    invalid_model = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers,
+        json={
+            "provider": "gemini",
+            "model": "../unsafe",
+            "messages": [{"role": "user", "content": "Hello"}],
+        },
+    )
+    assert invalid_model.status_code == 422
+
+    system_only = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers,
+        json={
+            "provider": "anthropic",
+            "model": "claude-sonnet",
+            "messages": [{"role": "system", "content": "Only system"}],
+        },
+    )
+    assert system_only.status_code == 422
