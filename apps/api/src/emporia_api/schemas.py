@@ -99,6 +99,8 @@ class AgentRunCreate(BaseModel):
     task: str = Field(min_length=1, max_length=12000)
     max_tokens: int = Field(default=1800, ge=1, le=4096)
     temperature: float | None = Field(default=0.2, ge=0, le=2)
+    web_research: bool = False
+    research_query: str | None = Field(default=None, min_length=1, max_length=600)
 
 
 class AgentRunRead(BaseModel):
@@ -119,3 +121,23 @@ class AgentRunRead(BaseModel):
     completed_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ResearchQuery(BaseModel):
+    query: str = Field(min_length=1, max_length=600)
+    maximum_number_of_tokens: int = Field(default=4000, ge=1000, le=8192)
+
+
+class ResearchSourceRead(BaseModel):
+    index: int
+    url: str
+    title: str
+    hostname: str
+    snippets: list[str]
+    age: list[str]
+
+
+class ResearchRead(BaseModel):
+    query: str
+    sources: list[ResearchSourceRead]
+    request_id: str | None = None
