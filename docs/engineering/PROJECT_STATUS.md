@@ -25,7 +25,8 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | Capability | State | Evidence and limits |
 |---|---|---|
 | API foundation | implemented | FastAPI app, health endpoints, venture CRUD, request validation, SQLAlchemy persistence |
-| Identity | implemented | Password hashing, JWT access tokens, account registration/login, active-user checks |
+| Identity | implemented | Argon2 password hashing, JWT access tokens, account registration/login, active-user checks, per-request membership validation |
+| Login abuse throttling | implemented | Shared SQLite/PostgreSQL failed-login counters per normalized email and direct client IP; HMAC-pseudonymized identifiers, fixed windows, `Retry-After`, successful-login email-counter reset, and automatic expiry cleanup |
 | Workspace isolation | implemented | Server-derived workspace identity, membership re-check on authenticated requests, owner/admin/operator write roles, viewer read-only behavior |
 | Database migrations | implemented | Alembic migration for fresh databases and compatibility with the earlier venture/audit/agent-run schema; tests cover fresh and legacy database upgrades |
 | Audit events | implemented | Persistent event records for venture changes, AI calls, agent runs, research calls, and workspace creation |
@@ -46,7 +47,8 @@ The latest API pull request must pass GitHub Actions before its changes are cons
 - Clients cannot select a tenant by sending an arbitrary workspace header or request-body field.
 - Passwords are hashed; API keys remain server-side secrets and are not returned by provider catalogue responses.
 - The legacy static bearer token is accepted only in development mode. Production deployments must use JWT authentication and a strong JWT signing secret.
-- The current identity layer does not yet provide email verification, MFA, password reset, refresh-token rotation, login throttling, or workspace invitations.
+- The current identity layer does not yet provide email verification, MFA, password reset, refresh-token rotation, or workspace invitations.
+- Login failure throttling is database-backed across API workers. Its limits are per normalized email and direct socket IP; deployments behind proxies must configure their trusted proxy/network boundary correctly rather than trusting arbitrary client-supplied forwarding headers.
 - Agent models have no action tools. Commerce actions, permission grants, approval records, budgets, sandboxing, and revocation enforcement must be implemented before enabling external actions.
 - Live external API behavior depends on operator-supplied credentials and the terms, rate limits, and quotas of each provider.
 
