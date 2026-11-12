@@ -116,3 +116,28 @@ typed input contract, objective, ordered procedure, required output sections, an
 skill-specific guardrails. The runtime rejects unknown input keys and validates required
 fields before provider calls. All pack v2 skills remain advisory; no provider, marketplace,
 supplier, inventory, pricing, or campaign action is performed by executing a skill.
+
+
+## Core commerce pack v3 (skills 31–45)
+
+| Skill ID | Domain | Purpose |
+|---|---|---|
+| pricing-elasticity-scenario-planner | pricing | Design price-response tests and compare evidence-backed price scenarios |
+| discount-ladder-review | pricing | Review discount tiers, margin floors, and stacking risks |
+| lifecycle-segmentation-planner | lifecycle | Design permission-aware lifecycle segments and suppression rules |
+| subscription-retention-diagnostic | lifecycle | Diagnose recurring-order churn and customer-respecting retention options |
+| support-contact-taxonomy | customer-operations | Build consistent support issue categories and routing |
+| customer-complaint-root-cause | customer-operations | Turn complaint evidence into corrective and preventive actions |
+| product-launch-readiness | venture | Assess cross-functional launch blockers and go/no-go gates |
+| product-market-entry-brief | strategy | Plan staged market entry with operating and diligence requirements |
+| marketplace-policy-readiness | compliance | Map supplied marketplace policy material to product/listing evidence |
+| claims-substantiation-audit | compliance | Check marketing claims against supplied evidence and limitations |
+| paid-media-creative-brief | advertising | Build evidence-led paid media creative concepts and test plans |
+| campaign-structure-audit | advertising | Audit supplied ad campaign exports, naming, audience overlap, and tracking |
+| lifecycle-email-flow-planner | lifecycle | Plan consent-aware triggered email journeys |
+| commerce-content-calendar | content | Coordinate customer-led commerce content by channel and date |
+| ecommerce-localization-brief | international | Plan locale-specific product, content, and commerce adaptations |
+
+The third pack is still advisory. In particular, policy and claims skills analyze operator-supplied
+documents and evidence; they do not fetch current regulations, verify live marketplace rules,
+certify a product, or provide legal approval.
