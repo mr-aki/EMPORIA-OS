@@ -351,7 +351,30 @@ Authorization: Bearer <access-token>
 
 The response aggregates agent and skill runs, including run status counts, provider-reported prompt/completion/total tokens, and provider/model breakdowns. Every query is scoped to the workspace bound to the access token. A provider that does not report token usage contributes zero for the unavailable counters.
 
-This endpoint reports token usage, not monetary spend. Emporia does not invent costs from model names: a future cost ledger must use an explicitly configured, versioned pricing source before reporting currency amounts.
+The summary also accepts inclusive UTC date filters:
+`GET /api/v1/usage/summary?start_date=2026-11-01&end_date=2026-11-30`.
+It returns a chronological daily breakdown as well as execution-type and provider/model totals.
+
+### Explicit model pricing and cost estimates
+
+Emporia never infers a model's price from its name. A workspace owner or admin must configure USD input/output rates per one million tokens:
+
+~~~http
+PUT /api/v1/usage/pricing/openai/gpt-5
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "input_usd_per_million_tokens": "2.50",
+  "output_usd_per_million_tokens": "10.00"
+}
+~~~
+
+Use `GET /api/v1/usage/pricing` to list the authenticated workspace's configured rates. Use `DELETE /api/v1/usage/pricing/{provider}/{model}` to remove a rate for future executions. Pricing changes never rewrite prior executions: each new agent or skill run snapshots its input/output rates when the run is created.
+
+Retrieve cost estimates using `GET /api/v1/usage/costs`, with optional inclusive UTC `start_date` and `end_date` filters. The response includes USD totals by execution type, provider/model, and day, together with `priced_runs` and `unpriced_runs`. A run remains unpriced when no workspace rate was configured at run creation or the provider did not report both prompt and completion token counts. Unknown costs remain explicitly unknown; no model prices are guessed.
+
+**Scope and accounting note:** these are usage-based estimates for persisted agent and skill runs only. They are not provider invoices, a monetary spend cap, or accounting-grade charges. General `/api/v1/ai/chat` requests, Brave Search, taxes, discounts, contractual adjustments, and other external charges are excluded. Rates are operator-supplied and must be kept current against the workspace's actual provider agreement.
 
 
 ### Monthly workspace output-token budget
