@@ -172,11 +172,16 @@ Provider keys stay on the server and are supplied through environment variables 
 
 ### Specialist agent runtime
 
-Three reviewed advisory definitions are registered:
+Eight reviewed advisory definitions are registered and share the authenticated, persisted agent-run execution path:
 
 - commerce-strategist — business model, positioning, validation strategy, and launch decisions.
 - product-research-analyst — opportunity assessment, customer problems, evidence quality, and assortment risk.
-- growth-marketing-planner — channel strategy, funnel design, creative experiments, and retention planning.
+- growth-marketing-planner — channel strategy, funnel design, and measurable acquisition experiments.
+- pricing-unit-economics-analyst — price floors, contribution margin, break-even analysis, and scenario modelling.
+- supplier-sourcing-analyst — sourcing briefs, RFQs, supplier due diligence, quality planning, and landed-cost inputs.
+- customer-voice-analyst — customer feedback themes, evidence traceability, journey friction, and prioritised fixes.
+- marketplace-listing-optimizer — product listings, marketplace SEO, merchandising briefs, and claim checks.
+- retention-lifecycle-specialist — activation, post-purchase, repeat-purchase, loyalty, and win-back journeys.
 
 Endpoints:
 
@@ -185,7 +190,7 @@ Endpoints:
 - GET /api/v1/agent-runs lists persisted runs for the current workspace.
 - GET /api/v1/agent-runs/{run_id} retrieves one run.
 
-A run records its task, output, status, provider/model, token usage, request ID, timestamps, and selected research sources. Start, completion, and failure events are audited.
+The specialist metadata contract also includes category, expected deliverables, and required context; private system prompts are never returned. A run records its task, output, status, provider/model, token usage, request ID, timestamps, and selected research sources. Start, completion, and failure events are audited. Unexpected provider and research exceptions also finalize the persisted run as failed without exposing internal exception details to API clients.
 
 **Safety boundary:** these agents are advisory text agents. They do not have browser, shell, store-admin, payment, or other action tools. They cannot autonomously change a live business.
 
