@@ -1,9 +1,20 @@
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from emporia_api.database import Base
@@ -98,6 +109,9 @@ class AgentRun(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    output_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
@@ -171,6 +185,32 @@ class WorkspaceOutputTokenBudget(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
+class WorkspaceModelPrice(Base):
+    """Workspace-configured provider rates, expressed in USD per one million tokens."""
+
+    __tablename__ = "workspace_model_prices"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "provider",
+            "model",
+            name="uq_workspace_model_price_provider_model",
+        ),
+        Index("ix_workspace_model_prices_workspace_id", "workspace_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_usd_per_million_tokens: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False)
+    output_usd_per_million_tokens: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(120), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
 class SkillRun(Base):
     __tablename__ = "skill_runs"
     __table_args__ = (
@@ -193,6 +233,9 @@ class SkillRun(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    output_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
