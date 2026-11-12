@@ -32,6 +32,7 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | AI provider gateway | implemented | OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible adapters; upstream HTTP contracts are tested with mocks |
 | Specialist agent runtime | implemented | Eight versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
 | Network research | implemented | Explicit Brave Search connector, bounded search requests, source metadata, and untrusted external-context handling |
+| Commerce skills | implemented | 15 versioned advisory skills, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, and audit events |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
 
@@ -59,3 +60,12 @@ The latest API pull request must pass GitHub Actions before its changes are cons
 ## Engineering principle
 
 Prefer a small end-to-end capability that is real, testable, observable, and safe over a large catalogue of unconnected specifications. Expand capability only with explicit contracts, ownership, tests, evaluation cases, and operational boundaries.
+
+## Skills implementation slice
+
+The Skills runtime adds a versioned 15-skill commerce pack with typed input contracts,
+unknown-field rejection, bounded payload validation, authenticated provider-backed
+execution, persisted workspace-scoped run history, and start/completion/failure audit
+events. Skills execute as advisory analysis only; they do not grant store, payment,
+supplier, advertising, fulfilment, or customer-action permissions. CI, evaluations, and
+security review remain release gates.
