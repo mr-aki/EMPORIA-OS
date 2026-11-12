@@ -1,13 +1,18 @@
+from datetime import date
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, get_current_principal
 from emporia_api.database import get_session
-from emporia_api.models import AgentRun, SkillRun
+from emporia_api.models import AgentRun, AuditEvent, SkillRun, utcnow
+from emporia_api.output_budgets import (
+    get_workspace_output_budget_state,
+    set_workspace_output_budget,
+)
 
 router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -120,3 +125,71 @@ def get_usage_summary(session: SessionDep, actor: AuthDep) -> UsageSummary:
         by_execution_type={"agent": agent_totals, "skill": skill_totals},
         by_provider_model=agent_breakdown + skill_breakdown,
     )
+
+
+class OutputBudgetUpdate(BaseModel):
+    monthly_output_tokens: int = Field(ge=1, le=10_000_000_000)
+
+
+class OutputBudgetRead(BaseModel):
+    configured: bool
+    monthly_output_token_limit: int | None
+    used_output_tokens: int
+    reserved_output_tokens: int
+    available_output_tokens: int | None
+    period_start: date
+    period_end: date
+
+
+@router.get("/budget", response_model=OutputBudgetRead)
+def get_output_budget(session: SessionDep, actor: AuthDep) -> OutputBudgetRead:
+    """Read the current month's settled and reserved output-token budget for this workspace."""
+    return OutputBudgetRead(**get_workspace_output_budget_state(session, actor.workspace_id))
+
+
+@router.put("/budget", response_model=OutputBudgetRead)
+def update_output_budget(
+    payload: OutputBudgetUpdate,
+    session: SessionDep,
+    actor: AuthDep,
+) -> OutputBudgetRead:
+    """Set the monthly output-token ceiling; only workspace owners and admins may change it."""
+    if actor.role not in {"owner", "admin"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners and admins can change the output-token budget",
+        )
+
+    set_workspace_output_budget(
+        session,
+        actor.workspace_id,
+        payload.monthly_output_tokens,
+    )
+    state = get_workspace_output_budget_state(session, actor.workspace_id)
+    committed_and_reserved = (
+        int(state["used_output_tokens"] or 0)
+        + int(state["reserved_output_tokens"] or 0)
+    )
+    if committed_and_reserved > payload.monthly_output_tokens:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "New output-token budget is below current month usage and reservations",
+                "used": state["used_output_tokens"],
+                "reserved": state["reserved_output_tokens"],
+                "requested_limit": payload.monthly_output_tokens,
+            },
+        )
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="usage.output_budget.updated",
+        resource_type="workspace_output_token_budget",
+        resource_id=actor.workspace_id,
+        detail=f"monthly_output_tokens:{payload.monthly_output_tokens}",
+        created_at=utcnow(),
+    ))
+    session.commit()
+    return OutputBudgetRead(**state)
