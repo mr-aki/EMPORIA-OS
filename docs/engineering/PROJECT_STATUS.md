@@ -64,27 +64,28 @@ Prefer a small end-to-end capability that is real, testable, observable, and saf
 
 ## Skills implementation slice
 
-The Skills runtime now contains a versioned 45-skill commerce catalog across three reviewed
+The Skills runtime contains a versioned 60-skill commerce catalog across four reviewed
 implementation packs. Every skill has a typed input contract, required/unknown-field
 validation, bounded payloads, an ordered procedure, output sections, and explicit
 guardrails. Authenticated executions are persisted and scoped to the current workspace,
 with start/completion/failure audit events. All skills remain advisory; they do not grant
 store, payment, supplier, advertising, fulfilment, or customer-action permissions.
 
-Pack v1 includes opportunity, product, sourcing, marketplace, growth, pricing, and
-retention workflows. Three narrowly defined skills also return deterministic Decimal-based
-landed-cost/margin, inventory-reorder, and promotion calculations. Server-derived values
-are version-checked and supplied to the model as authoritative context.
+Pack v1 covers opportunity, product, sourcing, marketplace, growth, pricing, and retention.
+Selected skills produce deterministic Decimal-based landed-cost/margin, inventory-reorder,
+and promotion calculations. Pack v2 adds customer persona/JTBD, brand/portfolio planning,
+bundling, SEO and review mining, quality inspection, supplier continuity, stock aging,
+fulfilment economics, and promotional calendars. Pack v3 adds pricing-response and discount
+planning, lifecycle segmentation and subscription retention, customer-support taxonomy,
+launch/market-entry readiness, supplied-policy/claims evidence review, paid-media work,
+content calendars, and localization.
 
-Pack v2 adds customer persona/JTBD analysis, brand positioning, portfolio and assortment
-planning, bundling, SEO/search-term audits, review mining, quality inspection planning,
-supplier continuity/quote analysis, stock aging, fulfilment economics, and promotional
-calendar planning.
+Pack v4 adds contribution-margin waterfalls, P&L variance, cash conversion, CAC and LTV,
+paid-media pacing and creative fatigue, catalogue/attribute quality, variant architecture,
+image and copy QA, warehouse slotting, order-exception analysis, and fulfilment capacity.
+Contribution waterfall, CAC, and cohort contribution LTV are computed server-side with
+Decimal arithmetic and returned as verified calculation payloads for the AI to explain.
 
-Pack v3 adds pricing-response and discount planning, lifecycle segmentation, subscription
-retention, support taxonomy and complaint analysis, launch readiness and market entry,
-marketplace-policy and claims evidence review, paid-media creative and campaign audits,
-lifecycle email planning, commerce content calendars, and localization. Numeric array
-item bounds are published in the API contract and validated before provider calls.
-Policy/claims skills analyze supplied materials; they do not verify live policies or
+Numeric array item bounds are published in the API contract and validated before provider
+calls. Policy/claims skills analyze supplied materials; they do not verify live policies or
 provide legal approval. CI, evaluations, and security review remain release gates.
