@@ -73,9 +73,17 @@ Prefer a small end-to-end capability that is real, testable, observable, and saf
 
 ## Skills implementation slice
 
-The Skills runtime adds a versioned 15-skill commerce pack with typed input contracts,
+The Skills runtime adds a versioned 30-skill commerce catalog across two reviewed implementation packs with typed input contracts,
 unknown-field rejection, bounded payload validation, authenticated provider-backed
 execution, persisted workspace-scoped run history, and start/completion/failure audit
 events. Skills execute as advisory analysis only; they do not grant store, payment,
 supplier, advertising, fulfilment, or customer-action permissions. CI, evaluations, and
 security review remain release gates.
+
+
+The second Skills pack adds customer persona/JTBD analysis, brand positioning, portfolio
+and assortment planning, bundling, SEO/search-term audits, review mining, quality
+inspection planning, supplier continuity/quote analysis, stock aging, fulfilment
+economics, and promotional calendar planning. Each definition has a typed contract,
+ordered procedure, output schema headings, and explicit guardrails. Pack v2 remains
+advisory and requires its own CI and evaluation evidence before any production claim.

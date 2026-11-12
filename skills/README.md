@@ -89,3 +89,30 @@ Reorder inputs treat inbound units as confirmed and usable. The suggested quanti
 is a review aid based on the reorder gap and MOQ, not a purchase order. Pricing outputs
 exclude advertising, refunds, fixed costs, and taxes unless already included in the
 supplied landed cost. These are operating calculations, not tax, customs, or accounting advice.
+
+
+## Core commerce pack v2 (skills 16–30)
+
+| Skill ID | Domain | Purpose |
+|---|---|---|
+| customer-persona-builder | customer | Build evidence-labelled buying personas from anonymized research and purchase evidence |
+| jobs-to-be-done-map | customer | Map customer progress, triggers, alternatives, and switching barriers |
+| brand-positioning-framework | strategy | Develop substantiated positioning and a testable message hierarchy |
+| product-portfolio-prioritizer | merchandising | Prioritize products by strategic fit, economics, demand evidence, and complexity |
+| assortment-gap-analysis | merchandising | Identify customer-need, feature, and price-tier coverage gaps |
+| product-bundle-architect | merchandising | Design coherent complementary bundles and evaluate margin/fulfilment trade-offs |
+| keyword-cluster-planner | seo | Build intent-led keyword clusters and map them to pages |
+| marketplace-search-term-audit | seo | Audit supplied marketplace query exports for relevance, waste, and coverage |
+| review-theme-miner | intelligence | Extract strengths, defects, unmet expectations, and improvement themes from reviews |
+| quality-inspection-plan | quality | Create risk-based inspection checkpoints, acceptance rules, and escalation paths |
+| supplier-continuity-risk-assessment | sourcing | Assess supply interruption exposure and mitigation options |
+| supplier-quote-comparison | sourcing | Normalize supplier quotations and compare total commercial exposure |
+| stock-aging-obsolescence-review | operations | Review stock age, expiry exposure, excess cover, and disposition options |
+| fulfilment-unit-economics | operations | Compare pick/pack, storage, shipping, returns, and minimum charges |
+| promotional-calendar-planner | marketing | Coordinate promotions around verified events, inventory, margin, and channel readiness |
+
+Pack v2 follows the same governed execution path as pack v1: every skill has a version,
+typed input contract, objective, ordered procedure, required output sections, and
+skill-specific guardrails. The runtime rejects unknown input keys and validates required
+fields before provider calls. All pack v2 skills remain advisory; no provider, marketplace,
+supplier, inventory, pricing, or campaign action is performed by executing a skill.

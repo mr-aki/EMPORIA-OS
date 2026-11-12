@@ -193,7 +193,7 @@ The response contains source URLs, titles, hostnames, excerpts, and available pa
 
 ## Skill catalog and execution
 
-The first commerce skill pack contains 15 versioned advisory procedures. Skills are not
+The core commerce catalog now contains 30 versioned advisory procedures across two implementation packs. Skills are not
 permission grants: the runtime does not browse supplied URLs, call store APIs, send supplier
 messages, change prices, place orders, or launch campaigns.
 
