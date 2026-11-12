@@ -230,8 +230,8 @@ async def execute_agent(
     session: SessionDep,
     actor: AuthDep,
 ):
-    require_write_access(actor)
     """Run a specialist against a configured model provider; no external action tools are enabled."""
+    require_write_access(actor)
     agent = get_agent(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -316,6 +316,20 @@ async def execute_agent(
             ))
             session.commit()
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            run.status = "failed"
+            run.error_message = "Unexpected research execution failure"
+            run.completed_at = utcnow()
+            session.add(AuditEvent(
+                workspace_id=actor.workspace_id,
+                actor=actor.user_id,
+                action="agent.run.failed",
+                resource_type="agent_run",
+                resource_id=run.id,
+                detail="research_unexpected_failure",
+            ))
+            session.commit()
+            raise HTTPException(status_code=502, detail=run.error_message) from exc
 
         source_rows = []
         source_blocks = []
@@ -388,6 +402,20 @@ async def execute_agent(
         ))
         session.commit()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        run.status = "failed"
+        run.error_message = "Unexpected provider execution failure"
+        run.completed_at = utcnow()
+        session.add(AuditEvent(
+            workspace_id=actor.workspace_id,
+            actor=actor.user_id,
+            action="agent.run.failed",
+            resource_type="agent_run",
+            resource_id=run.id,
+            detail="provider_unexpected_failure",
+        ))
+        session.commit()
+        raise HTTPException(status_code=502, detail=run.error_message) from exc
 
     run.status = "completed"
     run.output = reply.content
