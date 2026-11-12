@@ -15,7 +15,6 @@ from emporia_api.config import settings
 from emporia_api.database import get_session
 from emporia_api.models import User, WorkspaceMembership
 
-
 _password_hash = PasswordHash.recommended()
 
 
