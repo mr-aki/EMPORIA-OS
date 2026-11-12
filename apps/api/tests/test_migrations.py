@@ -140,3 +140,71 @@ def test_production_startup_rejects_schema_auto_creation(monkeypatch):
                 pass
 
     asyncio.run(run_lifespan())
+
+
+def test_existing_baseline_database_upgrades_to_queue_without_losing_venture_data(
+    tmp_path, monkeypatch
+):
+    url = schema_url(tmp_path)
+    monkeypatch.setenv("EMPORIA_DATABASE_URL", url)
+    config = migration_config()
+
+    command.upgrade(config, "0001_initial_schema")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO ventures "
+                    "(id, workspace_id, name, description, status, created_at, updated_at) "
+                    "VALUES ('legacy-venture', 'workspace-1', 'Legacy Store', '', "
+                    "'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                )
+            )
+
+        command.upgrade(config, "head")
+
+        inspector = inspect(engine)
+        assert "background_jobs" in inspector.get_table_names()
+        with engine.connect() as connection:
+            venture_name = connection.execute(
+                text("SELECT name FROM ventures WHERE id = 'legacy-venture'")
+            ).scalar_one()
+            revision = connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar_one()
+
+        assert venture_name == "Legacy Store"
+        assert revision == "0002_background_jobs"
+    finally:
+        engine.dispose()
+
+
+def test_queue_migration_can_be_reverted_without_dropping_baseline_tables(
+    tmp_path, monkeypatch
+):
+    url = schema_url(tmp_path)
+    monkeypatch.setenv("EMPORIA_DATABASE_URL", url)
+    config = migration_config()
+
+    command.upgrade(config, "head")
+    command.downgrade(config, "0001_initial_schema")
+
+    engine = create_engine(url)
+    try:
+        tables = set(inspect(engine).get_table_names())
+        assert "background_jobs" not in tables
+        assert {
+            "ventures",
+            "audit_events",
+            "agent_runs",
+            "skill_runs",
+            "alembic_version",
+        }.issubset(tables)
+        with engine.connect() as connection:
+            revision = connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar_one()
+        assert revision == "0001_initial_schema"
+    finally:
+        engine.dispose()
