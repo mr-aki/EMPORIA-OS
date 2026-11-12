@@ -3,7 +3,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,7 @@ from emporia_api.models import (
     AgentRun,
     AuditEvent,
     BackgroundJob,
+    Product,
     SkillRun,
     User,
     Venture,
@@ -85,6 +86,10 @@ from emporia_api.schemas import (
     JobRead,
     JobSubmission,
     LoginRequest,
+    ProductCreate,
+    ProductRead,
+    ProductStatus,
+    ProductUpdate,
     ProviderRead,
     RegisterRequest,
     ResearchQuery,
@@ -195,6 +200,168 @@ def delete_venture(venture_id: str, session: SessionDep, actor: AuthDep):
         resource_type="venture", resource_id=venture.id, detail=venture.name,
     ))
     session.delete(venture)
+    session.commit()
+
+
+@app.post(
+    "/api/v1/products",
+    response_model=ProductRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["catalog"],
+)
+def create_product(payload: ProductCreate, session: SessionDep, actor: AuthDep):
+    """Create a product in the authenticated workspace; SKU is unique per workspace."""
+    require_write_access(actor)
+    product = Product(
+        workspace_id=actor.workspace_id,
+        created_by=actor.user_id,
+        **payload.model_dump(),
+    )
+    session.add(product)
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A product with this SKU already exists in the workspace",
+        ) from exc
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="product.created",
+        resource_type="product",
+        resource_id=product.id,
+        detail=f"{product.sku}:{product.name}",
+    ))
+    session.commit()
+    session.refresh(product)
+    return product
+
+
+@app.get("/api/v1/products", response_model=list[ProductRead], tags=["catalog"])
+def list_products(
+    session: SessionDep,
+    actor: AuthDep,
+    status_filter: Annotated[ProductStatus | None, Query(alias="status")] = None,
+    search: Annotated[str | None, Query(min_length=1, max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0, le=1000000)] = 0,
+):
+    """List only the current workspace's products, with optional status/search filters."""
+    filters = [Product.workspace_id == actor.workspace_id]
+    if status_filter is not None:
+        filters.append(Product.status == status_filter)
+    if search is not None:
+        term = f"%{search.strip()}%"
+        filters.append(
+            or_(
+                Product.sku.ilike(term),
+                Product.name.ilike(term),
+                Product.vendor.ilike(term),
+                Product.product_type.ilike(term),
+            )
+        )
+    return list(session.scalars(
+        select(Product)
+        .where(*filters)
+        .order_by(Product.created_at.desc(), Product.id)
+        .limit(limit)
+        .offset(offset)
+    ))
+
+
+@app.get(
+    "/api/v1/products/{product_id}",
+    response_model=ProductRead,
+    tags=["catalog"],
+)
+def get_product(product_id: str, session: SessionDep, actor: AuthDep):
+    product = session.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.workspace_id == actor.workspace_id,
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+@app.patch(
+    "/api/v1/products/{product_id}",
+    response_model=ProductRead,
+    tags=["catalog"],
+)
+def update_product(
+    product_id: str,
+    payload: ProductUpdate,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    require_write_access(actor)
+    product = session.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.workspace_id == actor.workspace_id,
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    for key, value in changes.items():
+        if key in {"description", "vendor", "product_type"} and value is None:
+            value = ""
+        setattr(product, key, value)
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="product.updated",
+        resource_type="product",
+        resource_id=product.id,
+        detail=",".join(sorted(changes)),
+    ))
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A product with this SKU already exists in the workspace",
+        ) from exc
+    session.refresh(product)
+    return product
+
+
+@app.delete(
+    "/api/v1/products/{product_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["catalog"],
+)
+def delete_product(product_id: str, session: SessionDep, actor: AuthDep):
+    """Delete a product record while preserving a workspace audit event."""
+    require_write_access(actor)
+    product = session.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.workspace_id == actor.workspace_id,
+        )
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="product.deleted",
+        resource_type="product",
+        resource_id=product.id,
+        detail=f"{product.sku}:{product.name}",
+    ))
+    session.delete(product)
     session.commit()
 
 
