@@ -1,8 +1,6 @@
-from sqlalchemy import select
-
 from emporia_api.auth import create_access_token, hash_password
 from emporia_api.database import SessionLocal
-from emporia_api.models import AuditEvent, User, WorkspaceMembership
+from emporia_api.models import User, WorkspaceMembership
 
 
 def _member_headers(workspace_id: str, role: str, email: str) -> tuple[dict[str, str], str]:
@@ -269,3 +267,70 @@ def test_requester_can_cancel_pending_action_but_cannot_cancel_rejected_state(
         headers=auth_headers,
     )
     assert cannot_cancel.status_code == 409
+
+
+
+def test_owner_can_add_existing_workspace_co_approver_and_admin_cannot_grant_roles(
+    client, auth_headers
+):
+    workspace_id = _workspace_id(client, auth_headers)
+    account = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "new-approver@example.com",
+            "password": "AnotherStrongPassword!2026",
+            "display_name": "New Approver",
+            "workspace_name": "New Approver Workspace",
+        },
+    )
+    assert account.status_code == 201
+
+    added = client.post(
+        "/api/v1/workspaces/members",
+        json={"email": "NEW-APPROVER@example.com", "role": "admin"},
+        headers=auth_headers,
+    )
+    assert added.status_code == 201, added.text
+    assert added.json()["role"] == "admin"
+    assert added.json()["email"] == "new-approver@example.com"
+
+    members = client.get("/api/v1/workspaces/members", headers=auth_headers)
+    assert members.status_code == 200
+    assert any(member["email"] == "new-approver@example.com" for member in members.json())
+
+    admin_login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "new-approver@example.com",
+            "password": "AnotherStrongPassword!2026",
+            "workspace_id": workspace_id,
+        },
+    )
+    assert admin_login.status_code == 200
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+    another = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "third-member@example.com",
+            "password": "AnotherStrongPassword!2026",
+            "display_name": "Third Member",
+            "workspace_name": "Third Member Workspace",
+        },
+    )
+    assert another.status_code == 201
+
+    denied = client.post(
+        "/api/v1/workspaces/members",
+        json={"email": "third-member@example.com", "role": "viewer"},
+        headers=admin_headers,
+    )
+    assert denied.status_code == 403
+
+    duplicate = client.post(
+        "/api/v1/workspaces/members",
+        json={"email": "new-approver@example.com", "role": "admin"},
+        headers=auth_headers,
+    )
+    assert duplicate.status_code == 409
+
