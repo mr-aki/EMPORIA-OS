@@ -302,3 +302,72 @@ curl -X POST http://localhost:8000/api/v1/finance/fx/convert \\
 Historical conversions can include a `date` field, for example `"date": "2025-12-31"`. Amounts and rates use decimal arithmetic. Latest observations are cached in-process for six hours; historical observations are cached for 24 hours. Responses preserve the actual observation date returned by the provider.
 
 **Important limitation:** these are daily reference mid-market rates, not live bank, processor, card-network, remittance, or settlement quotes. They exclude FX spreads, fees, taxes, and provider-specific contractual pricing. Use actual settlement statements for accounting and reconciliation. The provider's documentation says blended rates are free for commercial use, reference data is updated daily, and storing/caching rates is encouraged. Read the [provider FAQ and terms](https://frankfurter.dev/) before choosing a rate source for regulated reporting.
+
+
+## Durable background jobs
+
+Long-running advisory agent and skill work can be submitted to the workspace-scoped database queue rather than keeping the client HTTP request open.
+
+Authenticated endpoints:
+
+- `POST /api/v1/jobs` — enqueue a registered agent or skill.
+- `GET /api/v1/jobs` — list safe job metadata for the active workspace.
+- `GET /api/v1/jobs/{job_id}` — inspect one job.
+- `POST /api/v1/jobs/{job_id}/cancel` — cancel before a worker claims it.
+
+Example agent submission:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs \\
+  -H "Authorization: Bearer $EMPORIA_ACCESS_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "kind": "agent",
+    "agent_id": "commerce-strategist",
+    "payload": {
+      "provider": "openai",
+      "model": "gpt-5",
+      "task": "Create a 30-day validation plan for a new home storage store."
+    },
+    "max_attempts": 3,
+    "idempotency_key": "home-storage-launch-plan-v1"
+  }'
+```
+
+Skill submissions use `"kind": "skill"`, a registered `skill_id`, and a `SkillRunCreate` payload under `payload`; the skill's current input schema is validated before enqueue. Provider keys remain server-side and are never accepted in the job request.
+
+Job states are `queued`, `running`, `retry_wait`, `succeeded`, `failed`, and `cancelled`. A successful job's `result_id` references the persisted agent or skill run. Job API responses omit the stored task and input payload. Use the existing workspace-scoped run endpoints to read the resulting output.
+
+**Workspace security:** enqueue and cancellation require write access. Every query is scoped to the access token's active workspace. The job records the submitting user ID, and the worker re-checks that the user is still active and still belongs to that workspace before execution. A removed user or revoked membership causes terminal failure; the worker never upgrades a user's role.
+
+**Idempotency:** an optional `idempotency_key` is unique within a workspace. Replaying the same key with the same kind, target, payload and retry budget returns the existing job. Reusing it for a different job returns HTTP 409.
+
+### Running the worker
+
+The worker is a separate process and shares the same PostgreSQL database and server-side provider configuration as the API.
+
+Local run (from `apps/api`):
+
+```bash
+python -m emporia_api.worker
+```
+
+Docker Compose:
+
+```bash
+docker compose run --rm api alembic upgrade head
+docker compose up --build -d api worker
+docker compose logs -f worker
+```
+
+Worker settings:
+
+- `EMPORIA_WORKER_POLL_SECONDS` — empty-queue sleep interval (default 2 seconds).
+- `EMPORIA_WORKER_LEASE_SECONDS` — claim lease before recovery (default 300 seconds).
+- `EMPORIA_WORKER_BACKOFF_BASE_SECONDS` and `EMPORIA_WORKER_BACKOFF_MAX_SECONDS` — bounded exponential retry delay (default 5 to 300 seconds).
+
+PostgreSQL uses `FOR UPDATE SKIP LOCKED` and an atomic compare-and-set update to claim jobs. Queue claims use a lease so a crashed worker's job can be recovered. Retryable HTTP failures (408, 429, 500, 502, 503, 504) are retried up to the request's bounded `max_attempts` (1–5; default 3). Terminal failure, retry scheduling, completion and cancellation are audited.
+
+**Delivery semantics:** this is an at-least-once queue. If a worker dies after a provider completed but before the job success status commits, the job can run again after its lease expires and may incur a duplicate model-provider call. Use bounded attempts and review provider billing/usage. The result run ID of the eventual successful attempt is stored on the job; earlier failed attempts remain in run history.
+
+Cancellation is supported only while a job is `queued` or `retry_wait`. An already-running provider request is not forcefully interrupted; it is bounded by the provider client's request timeout. The worker executes only registered advisory agent/skill handlers and has no shell, browser, store-admin, payment, order, or campaign action tools.
