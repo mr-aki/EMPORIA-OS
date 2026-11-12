@@ -1,19 +1,20 @@
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, get_current_principal
 from emporia_api.database import get_session
 from emporia_api.models import AgentRun, AuditEvent, SkillRun, WorkspaceModelPrice, utcnow
-from emporia_api.schemas import ModelName
 from emporia_api.output_budgets import (
     get_workspace_output_budget_state,
     set_workspace_output_budget,
 )
+from emporia_api.schemas import ModelName
 
 router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -333,7 +334,7 @@ class ModelPriceRead(BaseModel):
     output_usd_per_million_tokens: Decimal
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CostTotals(BaseModel):
