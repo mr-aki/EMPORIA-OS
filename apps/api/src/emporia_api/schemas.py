@@ -197,6 +197,8 @@ class SkillInputRead(BaseModel):
     description: str
     max_length: int | None = None
     max_items: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
 
 
 class SkillRead(BaseModel):
