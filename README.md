@@ -86,3 +86,6 @@ Emporia OS is distributed under the [Apache License 2.0](LICENSE). Third-party s
 **Build with evidence. Delegate with boundaries. Operate with confidence.**
 
 </div>
+
+
+**Usage cost ledger:** workspace owners/admins can configure explicit USD per-million-token rates by provider/model. Agent and skill runs snapshot rates and persist Decimal-based cost estimates; unknown rates remain unpriced. See `apps/api/README.md` for endpoints and limitations.
