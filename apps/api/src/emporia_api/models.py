@@ -176,6 +176,7 @@ class SkillRun(Base):
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    execution_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
