@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
@@ -108,3 +109,32 @@ class AgentRun(Base):
     @research_sources.setter
     def research_sources(self, value: list[dict[str, object]]) -> None:
         self.research_sources_json = json.dumps(value, ensure_ascii=False)
+
+
+class SkillRun(Base):
+    __tablename__ = "skill_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="running", nullable=False)
+    inputs_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    output: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def inputs(self) -> dict[str, Any]:
+        try:
+            value = json.loads(self.inputs_json or "{}")
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
