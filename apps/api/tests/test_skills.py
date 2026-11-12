@@ -130,17 +130,79 @@ def test_skill_run_persists_output_usage_and_audit(client, auth_headers, monkeyp
     assert "Validate demand" in run["output"]
     assert run["total_tokens"] == 205
     assert run["provider_request_id"] == "req_skill_test"
+    evaluation = run["evaluation"]
+    assert evaluation["evaluation_type"] == "required_section_coverage"
+    assert evaluation["passed"] is False
+    assert evaluation["present_sections"] == ["Executive verdict"]
+    assert evaluation["missing_sections"]
+    assert evaluation["empty_sections"] == []
 
     history = client.get("/api/v1/skill-runs", headers=auth_headers)
     assert history.status_code == 200
     assert history.json()[0]["id"] == run["id"]
+    assert history.json()[0]["evaluation"] == evaluation
     detail = client.get(f"/api/v1/skill-runs/{run['id']}", headers=auth_headers)
     assert detail.status_code == 200
     assert detail.json()["skill_id"] == "market-opportunity-scan"
+    assert detail.json()["evaluation"] == evaluation
 
     events = client.get("/api/v1/audit-events", headers=auth_headers).json()
     assert any(event["action"] == "skill.run.started" for event in events)
     assert any(event["action"] == "skill.run.completed" for event in events)
+
+
+
+def test_skill_run_evaluation_snapshot_is_durable_and_version_independent(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.providers import ProviderReply
+    from emporia_api.skills.registry import get_skill
+
+    skill = get_skill("market-opportunity-scan")
+    assert skill is not None
+    output = "\n\n".join(
+        f"## {section}\n- Evidence and analysis for {section}."
+        for section in skill.output_sections
+    )
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content=output,
+                prompt_tokens=100,
+                completion_tokens=80,
+                total_tokens=180,
+                request_id="req_skill_evaluation_snapshot",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    response = client.post(
+        "/api/v1/skills/market-opportunity-scan/runs",
+        headers=auth_headers,
+        json={"provider": "openai", "model": "gpt-5", "inputs": MARKET_INPUTS},
+    )
+
+    assert response.status_code == 201, response.text
+    run = response.json()
+    evaluation = run["evaluation"]
+    assert evaluation["passed"] is True
+    assert evaluation["present_sections"] == list(skill.output_sections)
+    assert evaluation["missing_sections"] == []
+    assert evaluation["empty_sections"] == []
+
+    # Read from the database after simulating a later registry version/removal.
+    monkeypatch.setattr("emporia_api.skills.registry.get_skill", lambda _skill_id: None)
+    detail = client.get(f"/api/v1/skill-runs/{run['id']}", headers=auth_headers)
+    history = client.get("/api/v1/skill-runs", headers=auth_headers)
+    assert detail.status_code == 200
+    assert history.status_code == 200
+    assert detail.json()["evaluation"] == evaluation
+    assert history.json()[0]["evaluation"] == evaluation
 
 
 def test_skill_run_records_provider_configuration_failure(client, auth_headers):

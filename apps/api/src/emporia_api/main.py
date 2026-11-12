@@ -94,6 +94,7 @@ from emporia_api.schemas import (
     WorkspaceSummary,
 )
 from emporia_api.skills.calculations import calculate_skill
+from emporia_api.skills.evaluation import evaluate_skill_output
 from emporia_api.skills.registry import get_skill, list_skills, validate_skill_inputs
 from emporia_api.usage import router as usage_router
 
@@ -1140,6 +1141,12 @@ async def execute_skill(
 
     run.status = "completed"
     run.output = reply.content
+    run.evaluation_json = json.dumps(
+        evaluate_skill_output(skill, run.output),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0

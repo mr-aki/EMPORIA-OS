@@ -402,19 +402,6 @@ class SkillRunRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @model_validator(mode="after")
-    def evaluate_completed_output(self):
-        if self.status != "completed":
-            return self
-
-        from emporia_api.skills.evaluation import evaluate_skill_output
-        from emporia_api.skills.registry import get_skill
-
-        skill = get_skill(self.skill_id)
-        if skill is not None and skill.version == self.skill_version:
-            self.evaluation = evaluate_skill_output(skill, self.output)
-        return self
-
 
 CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$")]
 
