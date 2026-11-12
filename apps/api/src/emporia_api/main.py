@@ -57,6 +57,7 @@ from emporia_api.output_budgets import (
 )
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
+from emporia_api.research.report import build_research_report
 from emporia_api.schemas import (
     AgentJobCreate,
     AgentRead,
@@ -78,6 +79,8 @@ from emporia_api.schemas import (
     RegisterRequest,
     ResearchQuery,
     ResearchRead,
+    ResearchReportRead,
+    ResearchReportRequest,
     SkillJobCreate,
     SkillRead,
     SkillRunCreate,
@@ -674,6 +677,67 @@ async def search_web(payload: ResearchQuery, session: SessionDep, actor: AuthDep
             for source in result.sources
         ],
     )
+
+
+@app.post(
+    "/api/v1/research/report",
+    response_model=ResearchReportRead,
+    tags=["research"],
+)
+async def create_research_report(
+    payload: ResearchReportRequest,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Run explicit, bounded searches and merge their source evidence into one report."""
+    require_write_access(actor)
+    try:
+        consume_workspace_rate_limit(
+            session,
+            actor.workspace_id,
+            "research",
+            settings.research_reports_per_minute,
+        )
+    except RateLimitExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
+    try:
+        report = await build_research_report(
+            brave_search_client,
+            queries=payload.queries,
+            country=payload.country,
+            search_lang=payload.search_lang,
+            maximum_number_of_tokens=payload.maximum_number_of_tokens,
+            max_sources=payload.max_sources,
+        )
+    except ResearchNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ResearchRateLimited as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(int(exc.retry_after))},
+        ) from exc
+    except ResearchRequestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="research.report.completed",
+        resource_type="research_report",
+        resource_id="brave-search",
+        detail=f"queries:{len(report['queries'])};sources:{report['total_unique_sources']}",
+    ))
+    session.commit()
+    return report
 
 
 @app.post("/api/v1/auth/register", response_model=AuthTokenRead, status_code=status.HTTP_201_CREATED, tags=["auth"])

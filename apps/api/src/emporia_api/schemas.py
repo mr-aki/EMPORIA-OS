@@ -216,6 +216,68 @@ class ResearchRead(BaseModel):
     request_id: str | None = None
 
 
+
+class ResearchReportRequest(BaseModel):
+    """The query list is the explicit user-approved data sent to external search."""
+
+    queries: list[str] = Field(min_length=2, max_length=5)
+    country: str = Field(default="US", pattern=r"^[A-Z]{2}$")
+    search_lang: str = Field(
+        default="en",
+        min_length=2,
+        max_length=8,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,4})?$",
+    )
+    maximum_number_of_tokens: int = Field(default=2048, ge=1024, le=8192)
+    max_sources: int = Field(default=20, ge=1, le=40)
+
+    @field_validator("queries", mode="before")
+    @classmethod
+    def normalize_queries(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        normalized = [item.strip() if isinstance(item, str) else item for item in value]
+        if any(isinstance(item, str) and not item for item in normalized):
+            raise ValueError("queries must not contain blank values")
+        if all(isinstance(item, str) for item in normalized):
+            folded = [item.casefold() for item in normalized]
+            if len(set(folded)) != len(folded):
+                raise ValueError("queries must be unique")
+        return normalized
+
+    @field_validator("country", mode="before")
+    @classmethod
+    def normalize_country(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("search_lang", mode="before")
+    @classmethod
+    def normalize_search_language(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+class ResearchQueryCoverageRead(BaseModel):
+    query: str
+    source_count: int = Field(ge=0)
+
+
+class ResearchReportSourceRead(ResearchSourceRead):
+    matched_queries: list[str]
+    lexical_relevance_score: float = Field(ge=0, le=1)
+
+
+class ResearchReportRead(BaseModel):
+    queries: list[str]
+    request_ids: list[str]
+    query_coverage: list[ResearchQueryCoverageRead]
+    total_unique_sources: int = Field(ge=0)
+    sources: list[ResearchReportSourceRead]
+    relevance_method: Literal["lexical_overlap"]
+    limitations: list[str]
+
+
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=12, max_length=128)
