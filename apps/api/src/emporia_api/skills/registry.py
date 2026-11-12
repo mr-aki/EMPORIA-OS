@@ -19,6 +19,8 @@ class SkillInput:
     minimum: float | None = None
     maximum: float | None = None
     integer_only: bool = False
+    item_minimum: float | None = None
+    item_maximum: float | None = None
 
     def public_metadata(self) -> dict[str, Any]:
         return {
@@ -32,6 +34,8 @@ class SkillInput:
             "minimum": self.minimum if self.value_type == "number" else None,
             "maximum": self.maximum if self.value_type == "number" else None,
             "integer_only": self.integer_only if self.value_type == "number" else False,
+            "item_minimum": self.item_minimum if self.value_type == "array" else None,
+            "item_maximum": self.item_maximum if self.value_type == "array" else None,
         }
 
 
@@ -105,9 +109,15 @@ def O(key: str, label: str, desc: str, required: bool = True) -> SkillInput:
     return SkillInput(key, label, "object", required, desc)
 
 
-def A(key: str, label: str, desc: str, required: bool = True,
-      max_items: int = 30) -> SkillInput:
-    return SkillInput(key, label, "array", required, desc, max_items=max_items)
+def A(
+    key: str, label: str, desc: str, required: bool = True,
+    max_items: int = 30, item_minimum: float | None = None,
+    item_maximum: float | None = None,
+) -> SkillInput:
+    return SkillInput(
+        key, label, "array", required, desc, max_items=max_items,
+        item_minimum=item_minimum, item_maximum=item_maximum,
+    )
 
 
 def S(id: str, name: str, domain: str, description: str, objective: str,
@@ -653,10 +663,6 @@ SKILLS: tuple[SkillDefinition, ...] = (
       ("Do not invent event dates or assume every market observes the same holidays.",
        "Do not recommend offers that breach supplied margin floors or confirmed inventory constraints.",
        "Calendar planning does not publish or launch campaigns.")),
-)
-
-
-
     S("pricing-elasticity-scenario-planner", "Pricing Elasticity Scenario Planner", "pricing",
       "Design interpretable price tests and compare demand scenarios using supplied observations.",
       "Help operators understand the evidence needed to change price without treating correlation as elasticity.",
@@ -682,7 +688,7 @@ SKILLS: tuple[SkillDefinition, ...] = (
       (N("list_price","List price","Reference price per unit.",minimum=0),
        N("unit_landed_cost","Unit landed cost","Comparable per-unit landed cost.",minimum=0),
        N("variable_fee_percent","Variable fee percent","Total variable sales fee as a percentage.",minimum=0,maximum=100),
-       A("discount_tiers","Discount tiers","Proposed discount percentages or tier records.",True,30),
+       A("discount_tiers","Discount tiers","Proposed discount percentages from 0 to 100.",True,30,item_minimum=0,item_maximum=100),
        O("promotion_rules","Promotion rules","Stacking, coupon, bundle, loyalty, and channel restrictions.",False),
        T("currency","Currency","Currency code used by the price and cost inputs.")),
       ("Normalize discount definitions and identify reference-price and eligibility ambiguity.",
@@ -1002,6 +1008,24 @@ def validate_skill_inputs(skill: SkillDefinition, inputs: dict[str, Any]) -> lis
             if valid and len(value) > field.max_items:
                 errors.append(f"Input '{field.key}' exceeds {field.max_items} items")
                 continue
+            if valid and (field.item_minimum is not None or field.item_maximum is not None):
+                for index, item in enumerate(value):
+                    if isinstance(item, bool) or not isinstance(item, (int, float)):
+                        errors.append(f"Input '{field.key}' item {index} must be a number")
+                        valid = False
+                        break
+                    if isinstance(item, float) and not math.isfinite(item):
+                        errors.append(f"Input '{field.key}' item {index} must be finite")
+                        valid = False
+                        break
+                    if field.item_minimum is not None and item < field.item_minimum:
+                        errors.append(f"Input '{field.key}' item {index} must be at least {field.item_minimum}")
+                        valid = False
+                        break
+                    if field.item_maximum is not None and item > field.item_maximum:
+                        errors.append(f"Input '{field.key}' item {index} must be at most {field.item_maximum}")
+                        valid = False
+                        break
         if not valid:
             errors.append(f"Input '{field.key}' must be a non-empty {field.value_type}")
     return errors
