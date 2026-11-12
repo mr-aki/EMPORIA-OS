@@ -214,6 +214,9 @@ class SkillRun(Base):
     status: Mapped[str] = mapped_column(String(20), default="running", nullable=False)
     inputs_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     output: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    evaluation_json: Mapped[str] = mapped_column(
+        Text, default="{}", server_default="{}", nullable=False
+    )
     error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
