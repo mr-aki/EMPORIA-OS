@@ -149,23 +149,40 @@ def _aggregate(
     daily_rows = session.execute(
         select(
             func.date(run_model.created_at),
+            run_model.status,
             func.count(run_model.id),
-            func.sum(run_model.prompt_tokens),
-            func.sum(run_model.completion_tokens),
-            func.sum(run_model.total_tokens),
+            func.coalesce(func.sum(run_model.prompt_tokens), 0),
+            func.coalesce(func.sum(run_model.completion_tokens), 0),
+            func.coalesce(func.sum(run_model.total_tokens), 0),
         )
         .where(*scope)
-        .group_by(func.date(run_model.created_at))
+        .group_by(func.date(run_model.created_at), run_model.status)
     ).all()
-    daily = [
-        DailyUsage(
-            date=date.fromisoformat(str(row[0])[:10]),
-            runs=row[1],
-            prompt_tokens=row[2] or 0,
-            completion_tokens=row[3] or 0,
-            total_tokens=row[4] or 0,
+    daily_map: dict[date, dict[str, int]] = {}
+    for day_value, status, count, prompt, completion, total in daily_rows:
+        day = date.fromisoformat(str(day_value)[:10])
+        values = daily_map.setdefault(
+            day,
+            {
+                "runs": 0,
+                "completed_runs": 0,
+                "failed_runs": 0,
+                "running_runs": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            },
         )
-        for row in daily_rows
+        values["runs"] += count
+        status_key = f"{status}_runs"
+        if status_key in values:
+            values[status_key] += count
+        values["prompt_tokens"] += prompt
+        values["completion_tokens"] += completion
+        values["total_tokens"] += total
+    daily = [
+        DailyUsage(date=day, **values)
+        for day, values in sorted(daily_map.items())
     ]
     return totals, breakdown, daily
 
