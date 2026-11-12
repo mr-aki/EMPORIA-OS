@@ -302,3 +302,37 @@ curl -X POST http://localhost:8000/api/v1/finance/fx/convert \\
 Historical conversions can include a `date` field, for example `"date": "2025-12-31"`. Amounts and rates use decimal arithmetic. Latest observations are cached in-process for six hours; historical observations are cached for 24 hours. Responses preserve the actual observation date returned by the provider.
 
 **Important limitation:** these are daily reference mid-market rates, not live bank, processor, card-network, remittance, or settlement quotes. They exclude FX spreads, fees, taxes, and provider-specific contractual pricing. Use actual settlement statements for accounting and reconciliation. The provider's documentation says blended rates are free for commercial use, reference data is updated daily, and storing/caching rates is encouraged. Read the [provider FAQ and terms](https://frankfurter.dev/) before choosing a rate source for regulated reporting.
+
+
+## Governed business actions
+
+Emporia has an explicit approval-request lifecycle for future commerce integrations. The action catalogue is an allow-list, not a general-purpose execution API.
+
+### Action catalogue
+
+- GET /api/v1/actions/catalog lists the currently supported proposal contracts and their risk labels.
+- POST /api/v1/actions/requests records a proposal in the authenticated workspace.
+- GET /api/v1/actions/requests lists workspace requests; optional status=pending_approval filters the queue.
+- GET /api/v1/actions/requests/{request_id} retrieves a request within the current workspace.
+- POST /api/v1/actions/requests/{request_id}/approve approves a pending request.
+- POST /api/v1/actions/requests/{request_id}/reject rejects a pending request.
+- POST /api/v1/actions/requests/{request_id}/cancel lets the requester or a workspace admin cancel a pending or approved request.
+- POST /api/v1/actions/requests/{request_id}/execute is a fail-closed execution gate.
+
+The allow-listed proposal types are product catalogue update, stock adjustment, campaign publication, and order refund. Inputs are validated against each action contract, limited to 16 KB, and rejected if secret-like fields such as passwords or API tokens are included. An optional workspace-scoped idempotency key prevents duplicate requests.
+
+### Approval rules
+
+- Owner, admin, and operator roles may create action proposals; viewers are read-only.
+- Only workspace owners and admins may approve or reject.
+- The requester cannot approve or reject their own request. A different workspace admin must decide; the requester can cancel their own request.
+- Only the workspace owner can add an existing registered account to the current workspace and grant it an admin/operator/viewer role. Admins cannot grant roles.
+- Every request and state transition is written to the workspace audit trail.
+- Requests and histories are tenant-scoped. A user in another workspace receives 404 for a request they do not belong to.
+
+### Critical execution boundary
+
+**No external action executor is registered in this release.** The catalogue reports executor_available=false for every action type. Approvals can be recorded and audited, but attempting to execute an approved proposal returns HTTP 409, records the block reason, and leaves the request approved. No storefront, stock, campaign, payment, refund, supplier, or customer system is changed.
+
+A future commerce connector must register a reviewed adapter with idempotency, permission scopes, budget limits, precondition checks, dry-run support, rollback/compensation design, and an explicit approval policy before any external side effect is enabled.
+
