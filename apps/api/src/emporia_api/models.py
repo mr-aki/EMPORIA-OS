@@ -143,7 +143,7 @@ class WorkspaceOutputTokenBudget(Base):
     __tablename__ = "workspace_output_token_budgets"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     monthly_output_token_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
