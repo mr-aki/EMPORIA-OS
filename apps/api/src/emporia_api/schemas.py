@@ -115,6 +115,7 @@ class AgentRunCreate(BaseModel):
     temperature: float | None = Field(default=0.2, ge=0, le=2)
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
+    research_queries: list[str] | None = Field(default=None, min_length=1, max_length=5)
     research_country: str = Field(default="US", pattern=r"^[A-Z]{2}$")
     research_lang: str = Field(
         default="en",
@@ -122,6 +123,26 @@ class AgentRunCreate(BaseModel):
         max_length=8,
         pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,4})?$",
     )
+
+    @field_validator("research_query", mode="before")
+    @classmethod
+    def normalize_research_query(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("research_queries", mode="before")
+    @classmethod
+    def normalize_research_queries(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        normalized = [item.strip() if isinstance(item, str) else item for item in value]
+        if any(isinstance(item, str) and not item for item in normalized):
+            raise ValueError("research_queries must not contain blank values")
+        if all(isinstance(item, str) for item in normalized):
+            if any(len(item) > 600 for item in normalized):
+                raise ValueError("Each research query must be at most 600 characters")
+            if len({item.casefold() for item in normalized}) != len(normalized):
+                raise ValueError("research_queries must be unique")
+        return normalized
 
     @field_validator("research_country", mode="before")
     @classmethod
@@ -135,10 +156,13 @@ class AgentRunCreate(BaseModel):
 
     @model_validator(mode="after")
     def require_explicit_research_query(self):
-        if self.web_research and not self.research_query:
+        if self.research_query and self.research_queries:
+            raise ValueError("Provide research_query or research_queries, not both")
+        if self.web_research and not (self.research_query or self.research_queries):
             raise ValueError(
                 "research_query is required when web_research is enabled; "
-                "the task text is never sent to external search automatically"
+                "provide research_query or research_queries explicitly. "
+                "The task text is never sent to external search automatically"
             )
         if self.web_research and len(self.task) > 7000:
             raise ValueError(
@@ -154,6 +178,8 @@ class ResearchSourceRead(BaseModel):
     hostname: str
     snippets: list[str]
     age: list[str]
+    matched_queries: list[str] = Field(default_factory=list)
+    lexical_relevance_score: float | None = Field(default=None, ge=0, le=1)
 
 
 class AgentRunRead(BaseModel):
@@ -407,19 +433,6 @@ class SkillRunRead(BaseModel):
     completed_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
-
-    @model_validator(mode="after")
-    def evaluate_completed_output(self):
-        if self.status != "completed":
-            return self
-
-        from emporia_api.skills.evaluation import evaluate_skill_output
-        from emporia_api.skills.registry import get_skill
-
-        skill = get_skill(self.skill_id)
-        if skill is not None and skill.version == self.skill_version:
-            self.evaluation = evaluate_skill_output(skill, self.output)
-        return self
 
 
 CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$")]
