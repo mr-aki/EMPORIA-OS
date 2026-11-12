@@ -16,6 +16,11 @@ from emporia_api.auth import (
     require_write_access,
     verify_password,
 )
+from emporia_api.concurrency import (
+    ConcurrentExecutionLimitExceeded,
+    recover_expired_execution_leases,
+    reserve_execution_slot,
+)
 from emporia_api.config import settings
 from emporia_api.database import get_session
 from emporia_api.finance.frankfurter import (
@@ -285,6 +290,7 @@ async def execute_agent(
             ),
         )
 
+    recover_expired_execution_leases(session, AgentRun, actor.workspace_id)
     fingerprint = fingerprint_request(
         "agent", agent.id, agent.version, actor.user_id, payload
     )
@@ -295,6 +301,26 @@ async def execute_agent(
         response.status_code = status.HTTP_200_OK
         response.headers["Idempotency-Replayed"] = "true"
         return existing
+
+    try:
+        lease_expires_at = reserve_execution_slot(
+            session,
+            AgentRun,
+            actor.workspace_id,
+            settings.agent_max_concurrent_runs,
+            settings.execution_lease_seconds,
+        )
+    except ConcurrentExecutionLimitExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Workspace concurrent agent execution limit reached",
+                "active": exc.active,
+                "limit": exc.limit,
+            },
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
 
     try:
         enforce_workspace_output_budget(
@@ -338,6 +364,7 @@ async def execute_agent(
         status="running",
         task=payload.task,
         requested_max_tokens=payload.max_tokens,
+        execution_lease_expires_at=lease_expires_at,
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )
@@ -868,6 +895,7 @@ async def execute_skill(
             ),
         )
 
+    recover_expired_execution_leases(session, SkillRun, actor.workspace_id)
     fingerprint = fingerprint_request(
         "skill", skill.id, skill.version, actor.user_id, payload
     )
@@ -878,6 +906,26 @@ async def execute_skill(
         response.status_code = status.HTTP_200_OK
         response.headers["Idempotency-Replayed"] = "true"
         return existing
+
+    try:
+        lease_expires_at = reserve_execution_slot(
+            session,
+            SkillRun,
+            actor.workspace_id,
+            settings.skill_max_concurrent_runs,
+            settings.execution_lease_seconds,
+        )
+    except ConcurrentExecutionLimitExceeded as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Workspace concurrent skill execution limit reached",
+                "active": exc.active,
+                "limit": exc.limit,
+            },
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
 
     try:
         enforce_workspace_output_budget(
@@ -921,6 +969,7 @@ async def execute_skill(
         status="running",
         inputs_json=json.dumps(payload.inputs, ensure_ascii=False, allow_nan=False),
         requested_max_tokens=payload.max_tokens,
+        execution_lease_expires_at=lease_expires_at,
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint if idempotency_key else None,
     )

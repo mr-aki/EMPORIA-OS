@@ -32,7 +32,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0005_workspace_output_budgets"
+        assert revision == "0006_execution_leases"
         assert {"idempotency_key", "request_fingerprint"}.issubset(
             {column["name"] for column in inspector.get_columns("agent_runs")}
         )
@@ -64,6 +64,12 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             assert {"requested_max_tokens", "budget_charged_tokens"}.issubset(
                 {column["name"] for column in inspector.get_columns(table_name)}
             )
+            assert "execution_lease_expires_at" in {
+                column["name"] for column in inspector.get_columns(table_name)
+            }
+            assert f"ix_{table_name}_execution_lease_expires_at" in {
+                item["name"] for item in inspector.get_indexes(table_name)
+            }
     finally:
         engine.dispose()
 
