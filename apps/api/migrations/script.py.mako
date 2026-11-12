@@ -1,4 +1,4 @@
-"""\${message}\\""" 
+"""\${message}"""
 
 from typing import Sequence, Union
 
