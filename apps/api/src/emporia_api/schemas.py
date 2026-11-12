@@ -280,6 +280,9 @@ class SkillInputRead(BaseModel):
     max_items: int | None = None
     minimum: float | None = None
     maximum: float | None = None
+    integer_only: bool = False
+    item_minimum: float | None = None
+    item_maximum: float | None = None
 
 
 class SkillRead(BaseModel):
