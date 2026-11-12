@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from emporia_api.agents.registry import get_agent, list_agents
-from emporia_api.skills.registry import get_skill, list_skills, validate_skill_inputs
 from emporia_api.auth import require_api_token
 from emporia_api.config import settings
 from emporia_api.database import Base, engine, get_session
@@ -22,10 +21,10 @@ from emporia_api.schemas import (
     AgentRead,
     AgentRunCreate,
     AgentRunRead,
-    ChatMessage,
     AuditRead,
     ChatCompletionRead,
     ChatCompletionRequest,
+    ChatMessage,
     ProviderRead,
     ResearchQuery,
     ResearchRead,
@@ -36,6 +35,7 @@ from emporia_api.schemas import (
     VentureRead,
     VentureUpdate,
 )
+from emporia_api.skills.registry import get_skill, list_skills, validate_skill_inputs
 
 
 @asynccontextmanager
