@@ -329,3 +329,70 @@ The response aggregates agent and skill runs, including run status counts, provi
 
 This endpoint reports token usage, not monetary spend. Emporia does not invent costs from model names: a future cost ledger must use an explicitly configured, versioned pricing source before reporting currency amounts.
 
+
+
+## Durable background jobs
+
+Long-running advisory agent and skill work can be submitted to the workspace-scoped database queue instead of holding the client HTTP request open.
+
+Authenticated endpoints:
+
+- `POST /api/v1/jobs` — enqueue a registered agent or skill.
+- `GET /api/v1/jobs` — list safe job metadata for the active workspace.
+- `GET /api/v1/jobs/{job_id}` — inspect one job.
+- `POST /api/v1/jobs/{job_id}/cancel` — cancel before a worker claims it.
+
+Example agent submission:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs \\
+  -H "Authorization: Bearer $EMPORIA_ACCESS_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "kind": "agent",
+    "agent_id": "commerce-strategist",
+    "payload": {
+      "provider": "openai",
+      "model": "gpt-5",
+      "task": "Create a 30-day validation plan for a home storage store."
+    },
+    "max_attempts": 3,
+    "idempotency_key": "home-storage-launch-plan-v1"
+  }'
+```
+
+Skill jobs use `"kind": "skill"`, a registered `skill_id`, and a `SkillRunCreate` payload under `payload`; the skill's registered input schema is validated before enqueue. Provider keys remain server-side.
+
+Job states are `queued`, `running`, `retry_wait`, `succeeded`, `failed`, and `cancelled`. A successful job's `result_id` references the persisted agent or skill run. Job responses intentionally omit the task/input payload. Use the existing workspace-scoped run endpoints to read output.
+
+**Workspace security:** enqueue/cancel require write access and every list/get/cancel is scoped to the access token's active workspace. The job stores the submitting user ID. Before execution, the worker re-checks that the user remains active and still belongs to the workspace, then uses the current membership role. A deleted/inactive user or revoked membership causes terminal job failure; the worker does not assume or grant an owner role.
+
+**Idempotency:** an optional `idempotency_key` is unique within the workspace. Replaying the same key and same kind, target, payload and retry budget returns the existing job. Reusing the key for different work returns HTTP 409.
+
+### Deploying the worker
+
+The worker is a separate process/container using the same PostgreSQL database and provider configuration as the API. Run migrations before either service is scaled up:
+
+```bash
+docker compose run --rm api alembic upgrade head
+docker compose up --build -d api worker
+docker compose logs -f worker
+```
+
+For a local source checkout (from `apps/api`):
+
+```bash
+python -m emporia_api.worker
+```
+
+Worker settings:
+
+- `EMPORIA_WORKER_POLL_SECONDS`: empty-queue polling interval (default 2 seconds).
+- `EMPORIA_WORKER_LEASE_SECONDS`: claim lease before recovery (default 300 seconds).
+- `EMPORIA_WORKER_BACKOFF_BASE_SECONDS` and `EMPORIA_WORKER_BACKOFF_MAX_SECONDS`: bounded exponential retry delay (defaults 5 and 300 seconds).
+
+PostgreSQL claims use `FOR UPDATE SKIP LOCKED` and a conditional compare-and-set update. A crashed worker's expired lease can be recovered by another worker. Retryable upstream HTTP failures (408, 429, 500, 502, 503, 504) receive bounded exponential backoff. Per-job `max_attempts` is restricted to 1–5 (default 3). Queue enqueue, cancel, retry, completion and terminal failure are audited.
+
+**Delivery semantics:** this is an at-least-once queue. If a worker dies after the provider completed but before the job success state commits, the job may be executed again after its lease expires, potentially causing a duplicate provider call. This is recorded rather than hidden; review provider usage and billing. Earlier failed attempts remain in run history and the job references the successful result when one completes.
+
+Cancellation only applies while a job is `queued` or `retry_wait`. A provider request already in flight is not forcefully interrupted; provider HTTP timeouts bound the request. The worker executes only registered advisory agent/skill handlers. It has no shell, browser, store-admin, payment, order, campaign, or other business-action tools.
