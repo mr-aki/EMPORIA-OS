@@ -1,5 +1,6 @@
 import pytest
 
+
 def test_health_is_public(client):
     response = client.get("/health/live")
     assert response.status_code == 200
