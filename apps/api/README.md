@@ -100,3 +100,37 @@ curl -X POST http://localhost:8000/api/v1/ai/chat \\
 **Credential distinction:** provider API keys are separate from ChatGPT, Claude, or Gemini consumer subscriptions. This gateway makes direct server-to-server API calls and uses the API billing/quotas of the configured provider account. Never put provider keys in browser code, source control, agent prompts, or request payloads.
 
 The gateway does not execute model-generated tools or business actions. Autonomous agent execution, approvals, budgets, retries, and tool sandboxing are separate layers that must be implemented before allowing bots to act on connected business systems.
+
+
+## Specialist agent runtime
+
+Three reviewed specialist definitions are currently registered:
+
+- `commerce-strategist`: business model, positioning, validation strategy, and launch decisions.
+- `product-research-analyst`: opportunity assessment, customer problems, evidence quality, and assortment risk.
+- `growth-marketing-planner`: channel strategy, funnel design, creative experiments, and retention planning.
+
+Authenticated endpoints:
+
+- `GET /api/v1/agents` lists public agent metadata. Private system prompts are not exposed.
+- `POST /api/v1/agents/{agent_id}/runs` executes a specialist through one configured provider.
+- `GET /api/v1/agent-runs` lists persisted runs for the configured workspace.
+- `GET /api/v1/agent-runs/{run_id}` retrieves one run.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agents/commerce-strategist/runs \\
+  -H "Authorization: Bearer $EMPORIA_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "provider": "openai",
+    "model": "gpt-5",
+    "task": "Design a 30-day validation plan for a niche home organization store.",
+    "max_tokens": 1800
+  }'
+```
+
+Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. A run is marked failed when its provider is not configured or the upstream provider rejects/fails the request.
+
+**Execution boundary:** these first agents are advisory text agents. They do not have browser access, shell access, store-admin credentials, payment access, or action tools. They cannot autonomously change a live business. The next runtime milestones are queued/background execution, scoped tool grants, human approval gates, budget enforcement, and sandboxed integrations.

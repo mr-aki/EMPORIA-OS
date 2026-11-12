@@ -95,3 +95,95 @@ def test_ai_chat_validates_model_and_requires_a_user_message(client, auth_header
         },
     )
     assert system_only.status_code == 422
+
+
+def test_agent_catalog_requires_auth_and_hides_internal_prompts(client, auth_headers):
+    assert client.get("/api/v1/agents").status_code == 401
+    response = client.get("/api/v1/agents", headers=auth_headers)
+    assert response.status_code == 200
+    agents = response.json()
+    assert {item["id"] for item in agents} == {
+        "commerce-strategist",
+        "product-research-analyst",
+        "growth-marketing-planner",
+    }
+    assert all(item["tools_enabled"] is False for item in agents)
+    assert all("system_prompt" not in item for item in agents)
+
+
+def test_unknown_agent_is_not_executable(client, auth_headers):
+    response = client.post(
+        "/api/v1/agents/not-a-real-agent/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Create a business plan",
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_agent_run_persists_output_usage_and_audit(client, auth_headers, monkeypatch):
+    from emporia_api.providers import ProviderReply
+
+    class FakeGateway:
+        async def complete(self, request):
+            assert request.messages[0].role == "system"
+            assert "E-Commerce Venture Strategist" in request.messages[0].content
+            assert request.messages[1].content == "Evaluate a niche skincare store."
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="Validate customer demand before launch.",
+                prompt_tokens=120,
+                completion_tokens=40,
+                total_tokens=160,
+                request_id="req_agent_test",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    response = client.post(
+        "/api/v1/agents/commerce-strategist/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Evaluate a niche skincare store.",
+            "max_tokens": 500,
+        },
+    )
+
+    assert response.status_code == 201
+    run = response.json()
+    assert run["status"] == "completed"
+    assert run["output"] == "Validate customer demand before launch."
+    assert run["total_tokens"] == 160
+    assert run["provider_request_id"] == "req_agent_test"
+
+    history = client.get("/api/v1/agent-runs", headers=auth_headers)
+    assert history.status_code == 200
+    assert history.json()[0]["id"] == run["id"]
+    detail = client.get(f"/api/v1/agent-runs/{run['id']}", headers=auth_headers)
+    assert detail.status_code == 200
+    assert detail.json()["agent_id"] == "commerce-strategist"
+
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(event["action"] == "agent.run.started" for event in events)
+    assert any(event["action"] == "agent.run.completed" for event in events)
+
+
+def test_agent_run_records_provider_configuration_failure(client, auth_headers):
+    response = client.post(
+        "/api/v1/agents/product-research-analyst/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Assess demand for reusable water bottles.",
+        },
+    )
+    assert response.status_code == 503
+    history = client.get("/api/v1/agent-runs", headers=auth_headers).json()
+    assert history[0]["status"] == "failed"
+    assert history[0]["error_message"] == "openai is not configured on this server"
