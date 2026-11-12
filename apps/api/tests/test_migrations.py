@@ -32,7 +32,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0007_background_jobs"
+        assert revision == "0008_business_action_requests"
         assert {"idempotency_key", "request_fingerprint"}.issubset(
             {column["name"] for column in inspector.get_columns("agent_runs")}
         )
@@ -47,6 +47,13 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         )
         assert "workspace_output_token_budgets" in inspector.get_table_names()
         assert "background_jobs" in inspector.get_table_names()
+        assert "business_action_requests" in inspector.get_table_names()
+        assert {"action_type", "status", "requested_by", "approved_by", "inputs_json"}.issubset(
+            {column["name"] for column in inspector.get_columns("business_action_requests")}
+        )
+        assert "uq_business_action_idempotency" in {
+            item["name"] for item in inspector.get_unique_constraints("business_action_requests")
+        }
         assert "uq_background_jobs_workspace_idempotency_key" in {
             item["name"] for item in inspector.get_unique_constraints("background_jobs")
         }
@@ -146,6 +153,7 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "users" in inspector.get_table_names()
         assert "workspaces" in inspector.get_table_names()
         assert "workspace_memberships" in inspector.get_table_names()
+        assert "business_action_requests" in inspector.get_table_names()
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
         }
