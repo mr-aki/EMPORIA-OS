@@ -247,8 +247,16 @@ def test_agent_can_include_network_research_context(client, auth_headers, monkey
             )
 
     class FakeResearchClient:
-        async def search(self, query, maximum_number_of_tokens=4000):
+        async def search(
+            self,
+            query,
+            maximum_number_of_tokens=4000,
+            country="US",
+            search_lang="en",
+        ):
             assert query == "home storage ecommerce demand"
+            assert country == "PK"
+            assert search_lang == "en"
             return WebResearchResult(
                 query=query,
                 sources=(
@@ -275,6 +283,8 @@ def test_agent_can_include_network_research_context(client, auth_headers, monkey
             "task": "Assess the home storage niche.",
             "web_research": True,
             "research_query": "home storage ecommerce demand",
+            "research_country": "PK",
+            "research_lang": "en",
         },
     )
 
@@ -315,3 +325,107 @@ def test_agent_research_bounds_task_size_before_external_call(client, auth_heade
         },
     )
     assert response.status_code == 422
+
+
+
+def test_research_search_persists_audit_and_returns_source_metadata(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.network.brave_search import ResearchSource, WebResearchResult
+
+    class FakeResearchClient:
+        async def search(self, query, maximum_number_of_tokens=4000, country="US", search_lang="en"):
+            assert query == "Pakistan ecommerce market trends"
+            assert maximum_number_of_tokens == 2048
+            assert country == "PK"
+            assert search_lang == "en"
+            return WebResearchResult(
+                query=query,
+                sources=(
+                    ResearchSource(
+                        index=1,
+                        url="https://example.com/report",
+                        title="Pakistan E-Commerce Report",
+                        hostname="example.com",
+                        snippets=("A verifiable source excerpt.",),
+                        age=("2026-11-01",),
+                    ),
+                ),
+                request_id="brave-api-test-1",
+            )
+
+    monkeypatch.setattr("emporia_api.main.brave_search_client", FakeResearchClient())
+    response = client.post(
+        "/api/v1/research/search",
+        headers=auth_headers,
+        json={
+            "query": "Pakistan ecommerce market trends",
+            "country": "PK",
+            "search_lang": "en",
+            "maximum_number_of_tokens": 2048,
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["request_id"] == "brave-api-test-1"
+    assert result["sources"][0]["url"] == "https://example.com/report"
+    assert result["sources"][0]["hostname"] == "example.com"
+    assert result["sources"][0]["snippets"] == ["A verifiable source excerpt."]
+
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(
+        event["action"] == "research.web_search.completed"
+        and event["detail"] == "sources:1"
+        for event in events
+    )
+
+
+def test_research_search_maps_provider_rate_limit_to_429(client, auth_headers, monkeypatch):
+    from emporia_api.network.brave_search import ResearchRateLimited
+
+    class RateLimitedClient:
+        async def search(self, *args, **kwargs):
+            raise ResearchRateLimited(4)
+
+    monkeypatch.setattr("emporia_api.main.brave_search_client", RateLimitedClient())
+    response = client.post(
+        "/api/v1/research/search",
+        headers=auth_headers,
+        json={"query": "market trend"},
+    )
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "4"
+
+
+def test_agent_research_maps_provider_rate_limit_and_persists_failed_run(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.network.brave_search import ResearchRateLimited
+
+    class ConfiguredGateway:
+        def configured(self, provider):
+            return True
+
+    class RateLimitedClient:
+        async def search(self, *args, **kwargs):
+            raise ResearchRateLimited(2)
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", ConfiguredGateway())
+    monkeypatch.setattr("emporia_api.main.brave_search_client", RateLimitedClient())
+    response = client.post(
+        "/api/v1/agents/product-research-analyst/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Assess general market demand.",
+            "web_research": True,
+            "research_query": "general market demand",
+        },
+    )
+
+    assert response.status_code == 429
+    history = client.get("/api/v1/agent-runs", headers=auth_headers).json()
+    assert history[0]["status"] == "failed"
+    assert history[0]["error_message"] == "Brave Search rate limit reached"
