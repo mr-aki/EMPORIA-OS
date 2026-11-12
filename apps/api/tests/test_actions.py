@@ -98,7 +98,8 @@ def test_action_input_validation_and_secret_hygiene(client, auth_headers):
 
 
 def test_idempotency_key_cannot_be_reused_for_a_different_request(client, auth_headers):
-    payload = _inventory_payload(idempotency_key="same-operation-key")
+    payload = _inventory_payload()
+    payload["idempotency_key"] = "same-operation-key"
     first = client.post("/api/v1/actions/requests", json=payload, headers=auth_headers)
     changed = {**payload, "summary": "Different requested stock adjustment"}
     assert first.status_code == 201
