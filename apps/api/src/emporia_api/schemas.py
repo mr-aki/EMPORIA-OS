@@ -113,6 +113,23 @@ class AgentRunCreate(BaseModel):
     temperature: float | None = Field(default=0.2, ge=0, le=2)
     web_research: bool = False
     research_query: str | None = Field(default=None, min_length=1, max_length=600)
+    research_country: str = Field(default="US", pattern=r"^[A-Z]{2}$")
+    research_lang: str = Field(
+        default="en",
+        min_length=2,
+        max_length=8,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,4})?$",
+    )
+
+    @field_validator("research_country", mode="before")
+    @classmethod
+    def normalize_research_country(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("research_lang", mode="before")
+    @classmethod
+    def normalize_research_language(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def require_explicit_research_query(self):
@@ -160,7 +177,24 @@ class AgentRunRead(BaseModel):
 
 class ResearchQuery(BaseModel):
     query: str = Field(min_length=1, max_length=600)
-    maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=8192)
+    country: str = Field(default="US", pattern=r"^[A-Z]{2}$")
+    search_lang: str = Field(
+        default="en",
+        min_length=2,
+        max_length=8,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,4})?$",
+    )
+    maximum_number_of_tokens: int = Field(default=4000, ge=1024, le=32768)
+
+    @field_validator("country", mode="before")
+    @classmethod
+    def normalize_country(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("search_lang", mode="before")
+    @classmethod
+    def normalize_search_language(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
 
 
 
