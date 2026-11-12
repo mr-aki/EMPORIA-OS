@@ -64,7 +64,7 @@ def _date_scope(
         scope.append(
             run_model.created_at
             < datetime.combine(
-                end_date + timedelta(days=1), time.min, tzinfo=timezone.utc
+                end_date + timedelta(days=1), time.min, tzinfo=UTC
             )
         )
     return scope
