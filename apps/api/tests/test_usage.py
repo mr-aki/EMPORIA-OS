@@ -93,7 +93,7 @@ def test_usage_summary_requires_authentication_and_is_workspace_scoped(
 def test_usage_summary_supports_inclusive_date_filters_and_daily_breakdown(
     client, auth_headers, monkeypatch
 ):
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
 
     class FakeGateway:
         def configured(self, provider):
@@ -123,7 +123,7 @@ def test_usage_summary_supports_inclusive_date_filters_and_daily_breakdown(
     )
     assert created.status_code == 201, created.text
 
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(UTC).date().isoformat()
     response = client.get(
         f"/api/v1/usage/summary?start_date={today}&end_date={today}",
         headers=auth_headers,
