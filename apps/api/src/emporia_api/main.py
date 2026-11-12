@@ -4,12 +4,28 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from emporia_api.agents.registry import get_agent, list_agents
-from emporia_api.auth import require_api_token
+from emporia_api.auth import (
+    Principal,
+    create_access_token,
+    get_current_principal,
+    hash_password,
+    require_write_access,
+    verify_password,
+)
 from emporia_api.config import settings
 from emporia_api.database import Base, engine, get_session
-from emporia_api.models import AgentRun, AuditEvent, Venture, utcnow
+from emporia_api.models import (
+    AgentRun,
+    AuditEvent,
+    User,
+    Venture,
+    Workspace,
+    WorkspaceMembership,
+    utcnow,
+)
 from emporia_api.network.brave_search import (
     BraveSearchClient,
     ResearchNotConfigured,
@@ -18,17 +34,24 @@ from emporia_api.network.brave_search import (
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.schemas import (
     AgentRead,
+    AuthMeRead,
+    AuthTokenRead,
     AgentRunCreate,
     AgentRunRead,
     AuditRead,
     ChatCompletionRead,
     ChatCompletionRequest,
+    LoginRequest,
+    RegisterRequest,
     ProviderRead,
     ResearchQuery,
     ResearchRead,
     VentureCreate,
     VentureRead,
     VentureUpdate,
+    WorkspaceCreate,
+    WorkspaceCreated,
+    WorkspaceSummary,
 )
 
 
@@ -40,7 +63,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 SessionDep = Annotated[Session, Depends(get_session)]
-AuthDep = Annotated[str, Depends(require_api_token)]
+AuthDep = Annotated[Principal, Depends(get_current_principal)]
 
 
 @app.get("/health/live", tags=["system"])
@@ -56,11 +79,12 @@ def readiness(session: SessionDep):
 
 @app.post("/api/v1/ventures", response_model=VentureRead, status_code=status.HTTP_201_CREATED, tags=["ventures"])
 def create_venture(payload: VentureCreate, session: SessionDep, actor: AuthDep):
-    venture = Venture(workspace_id=settings.workspace_id, **payload.model_dump())
+    require_write_access(actor)
+    venture = Venture(workspace_id=actor.workspace_id, **payload.model_dump())
     session.add(venture)
     session.flush()
     session.add(AuditEvent(
-        workspace_id=settings.workspace_id, actor=actor, action="venture.created",
+        workspace_id=settings.workspace_id, actor=actor.user_id, action="venture.created",
         resource_type="venture", resource_id=venture.id, detail=venture.name,
     ))
     session.commit()
@@ -75,7 +99,7 @@ def list_ventures(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ):
     return list(session.scalars(
-        select(Venture).where(Venture.workspace_id == settings.workspace_id)
+        select(Venture).where(Venture.workspace_id == actor.workspace_id)
         .order_by(Venture.created_at.desc()).limit(limit)
     ))
 
@@ -92,6 +116,7 @@ def get_venture(venture_id: str, session: SessionDep, actor: AuthDep):
 
 @app.patch("/api/v1/ventures/{venture_id}", response_model=VentureRead, tags=["ventures"])
 def update_venture(venture_id: str, payload: VentureUpdate, session: SessionDep, actor: AuthDep):
+    require_write_access(actor)
     venture = session.scalar(select(Venture).where(
         Venture.id == venture_id, Venture.workspace_id == settings.workspace_id
     ))
@@ -111,6 +136,7 @@ def update_venture(venture_id: str, payload: VentureUpdate, session: SessionDep,
 
 @app.delete("/api/v1/ventures/{venture_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["ventures"])
 def delete_venture(venture_id: str, session: SessionDep, actor: AuthDep):
+    require_write_access(actor)
     venture = session.scalar(select(Venture).where(
         Venture.id == venture_id, Venture.workspace_id == settings.workspace_id
     ))
@@ -158,6 +184,7 @@ async def complete_ai_chat(
     session: SessionDep,
     actor: AuthDep,
 ):
+    require_write_access(actor)
     """Send a bounded, authenticated chat request to a configured server-side provider."""
     try:
         reply = await provider_gateway.complete(payload)
@@ -210,6 +237,7 @@ async def execute_agent(
     session: SessionDep,
     actor: AuthDep,
 ):
+    require_write_access(actor)
     """Run a specialist against a configured model provider; no external action tools are enabled."""
     agent = get_agent(agent_id)
     if agent is None:
@@ -415,6 +443,7 @@ def get_agent_run(run_id: str, session: SessionDep, actor: AuthDep):
 
 @app.post("/api/v1/research/search", response_model=ResearchRead, tags=["research"])
 async def search_web(payload: ResearchQuery, session: SessionDep, actor: AuthDep):
+    require_write_access(actor)
     """Fetch extracted, source-linked web context through the configured Brave Search API."""
     try:
         result = await brave_search_client.search(
@@ -449,4 +478,145 @@ async def search_web(payload: ResearchQuery, session: SessionDep, actor: AuthDep
             }
             for source in result.sources
         ],
+    )
+
+
+@app.post("/api/v1/auth/register", response_model=AuthTokenRead, status_code=status.HTTP_201_CREATED, tags=["auth"])
+def register_account(payload: RegisterRequest, session: SessionDep):
+    """Create a user and the user's first owner workspace when registration is enabled."""
+    if not settings.allow_registration:
+        raise HTTPException(status_code=403, detail="Account registration is disabled")
+
+    user = User(
+        email=str(payload.email),
+        display_name=payload.display_name.strip(),
+        password_hash=hash_password(payload.password),
+    )
+    try:
+        session.add(user)
+        session.flush()
+        workspace = Workspace(name=payload.workspace_name.strip(), owner_user_id=user.id)
+        session.add(workspace)
+        session.flush()
+        session.add(WorkspaceMembership(
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role="owner",
+        ))
+        session.add(AuditEvent(
+            workspace_id=workspace.id,
+            actor=user.id,
+            action="workspace.created",
+            resource_type="workspace",
+            resource_id=workspace.id,
+            detail="owner_registration",
+        ))
+        session.commit()
+        session.refresh(user)
+        session.refresh(workspace)
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="An account with this email already exists") from exc
+
+    return AuthTokenRead(
+        access_token=create_access_token(user.id, workspace.id),
+        expires_in=settings.jwt_access_token_minutes * 60,
+        user_id=user.id,
+        workspace_id=workspace.id,
+    )
+
+
+@app.post("/api/v1/auth/login", response_model=AuthTokenRead, tags=["auth"])
+def login_account(payload: LoginRequest, session: SessionDep):
+    """Authenticate a user and issue an access token bound to an active workspace membership."""
+    user = session.scalar(select(User).where(User.email == str(payload.email)))
+    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    memberships = list(session.execute(
+        select(WorkspaceMembership, Workspace)
+        .join(Workspace, Workspace.id == WorkspaceMembership.workspace_id)
+        .where(WorkspaceMembership.user_id == user.id)
+        .order_by(Workspace.created_at.asc())
+    ))
+    if payload.workspace_id:
+        selected = next(
+            (row for row in memberships if row[0].workspace_id == payload.workspace_id),
+            None,
+        )
+    else:
+        selected = memberships[0] if memberships else None
+
+    if selected is None:
+        raise HTTPException(status_code=403, detail="No membership exists for the selected workspace")
+
+    membership, workspace = selected
+    return AuthTokenRead(
+        access_token=create_access_token(user.id, workspace.id),
+        expires_in=settings.jwt_access_token_minutes * 60,
+        user_id=user.id,
+        workspace_id=workspace.id,
+    )
+
+
+@app.get("/api/v1/auth/me", response_model=AuthMeRead, tags=["auth"])
+def current_account(principal: AuthDep, session: SessionDep):
+    user = session.get(User, principal.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User account not found")
+    memberships = session.execute(
+        select(WorkspaceMembership, Workspace)
+        .join(Workspace, Workspace.id == WorkspaceMembership.workspace_id)
+        .where(WorkspaceMembership.user_id == user.id)
+        .order_by(Workspace.created_at.asc())
+    )
+    return AuthMeRead(
+        user_id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        workspaces=[
+            WorkspaceSummary(id=membership.workspace_id, name=workspace.name, role=membership.role)
+            for membership, workspace in memberships
+        ],
+    )
+
+
+@app.post(
+    "/api/v1/auth/workspaces",
+    response_model=WorkspaceCreated,
+    status_code=status.HTTP_201_CREATED,
+    tags=["auth"],
+)
+def create_workspace(payload: WorkspaceCreate, principal: AuthDep, session: SessionDep):
+    user = session.get(User, principal.user_id)
+    if user is None:
+        raise HTTPException(status_code=403, detail="A registered account is required")
+    workspace = Workspace(name=payload.name.strip(), owner_user_id=user.id)
+    session.add(workspace)
+    session.flush()
+    session.add(WorkspaceMembership(
+        workspace_id=workspace.id,
+        user_id=user.id,
+        role="owner",
+    ))
+    session.add(AuditEvent(
+        workspace_id=workspace.id,
+        actor=user.id,
+        action="workspace.created",
+        resource_type="workspace",
+        resource_id=workspace.id,
+        detail="owner_created",
+    ))
+    session.commit()
+    session.refresh(workspace)
+    return WorkspaceCreated(
+        id=workspace.id,
+        name=workspace.name,
+        role="owner",
+        created_at=workspace.created_at,
     )
