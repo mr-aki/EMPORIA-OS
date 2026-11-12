@@ -33,7 +33,8 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | Specialist agent runtime | implemented | Eight versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
 | Network research | implemented | Explicit Brave Search connector, bounded regional search requests, source metadata, response validation, rate-limit mapping, and untrusted external-context handling |
 | FX reference rates | implemented | Keyless Frankfurter daily rate client with latest/historical lookup, in-process caching, Decimal conversion, request validation, and workspace audit events |
-| Commerce skills | implemented | 60 versioned advisory skills across four implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, and audit events |
+| Commerce skills | implemented | 60 versioned advisory skills across four implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, audit events, and required-output section/body evaluation |
+| Durable background execution | implemented | PostgreSQL-backed workspace-scoped jobs; idempotent enqueue/list/get/cancel; atomic claims, bounded retries, lease recovery and periodic lease renewal; current account and membership are revalidated before dispatch; separate worker container; only advisory agent/skill handlers are available |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
 
@@ -53,7 +54,7 @@ The latest API pull request must pass GitHub Actions before its changes are cons
 - Production frontend/dashboard and responsive operator workspace.
 - Direct Shopify, WooCommerce, Amazon, marketplace, payment, logistics, accounting, and CRM integrations.
 - Complete product, catalogue, supplier, purchase-order, inventory, fulfilment, customer-support, marketing, and finance domains.
-- Background task queue, workflow scheduler, multi-agent coordination, agent evaluation service, and durable retry/dead-letter handling.
+- Workflow scheduler, multi-agent coordination, full agent reasoning/evaluation service, and operator-facing dead-letter tooling.
 - Permissioned action-tool registry, human approval flows, spend controls, and execution sandbox.
 - Team invitations and full identity lifecycle features.
 - Production hardening evidence: threat model, independent security review, rate limiting, backup/restore drills, monitoring/alerting, load tests, disaster recovery, and a deployment-specific release gate.
@@ -68,7 +69,7 @@ The Skills runtime contains a versioned 60-skill commerce catalog across four re
 implementation packs. Every skill has a typed input contract, required/unknown-field
 validation, bounded payloads, an ordered procedure, output sections, and explicit
 guardrails. Authenticated executions are persisted and scoped to the current workspace,
-with start/completion/failure audit events. All skills remain advisory; they do not grant
+with start/completion/failure audit events. Completed skill runs expose a structural output-contract evaluation that checks required headings and non-empty section bodies only; it does not verify factual accuracy or reasoning quality. All skills remain advisory; they do not grant
 store, payment, supplier, advertising, fulfilment, or customer-action permissions.
 
 Pack v1 covers opportunity, product, sourcing, marketplace, growth, pricing, and retention.
@@ -89,3 +90,17 @@ Decimal arithmetic and returned as verified calculation payloads for the AI to e
 Numeric array item bounds are published in the API contract and validated before provider
 calls. Policy/claims skills analyze supplied materials; they do not verify live policies or
 provide legal approval. CI, evaluations, and security review remain release gates.
+
+## Durable background execution slice
+
+The PostgreSQL-backed job queue accepts workspace-scoped, idempotent requests for registered
+advisory agents and skills. Authenticated users can enqueue, list, inspect, and cancel queued
+jobs; response bodies intentionally omit the stored task/input payload. A separate worker
+claims jobs atomically, uses bounded retry backoff, recovers expired leases, and renews active
+leases with periodic heartbeats. Before dispatch, it revalidates the original account and its
+current workspace write role. If access has been revoked, execution fails closed. The worker
+has no browser, shell, payment, order, store-admin, or other external business-action tools.
+
+The queue is implemented and CI-tested, but it is not a workflow scheduler or multi-agent
+orchestrator. The first version still needs deployment-specific load, failure-recovery, and
+operational monitoring evidence before production readiness can be claimed.
