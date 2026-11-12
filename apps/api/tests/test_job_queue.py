@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ from emporia_api.config import settings
 from emporia_api.database import SessionLocal
 from emporia_api.job_queue import claim_next_job, retry_delay_seconds
 from emporia_api.models import (
+    AgentRun,
     AuditEvent,
     BackgroundJob,
     WorkspaceMembership,
@@ -250,3 +252,145 @@ def test_worker_does_not_finalize_job_after_losing_lease(client, monkeypatch):
     assert job.status == "running"
     assert job.locked_by == "replacement-worker"
     assert job.result_id is None
+
+
+
+def test_worker_executes_multi_query_research_agent_job_end_to_end(
+    client, monkeypatch
+):
+    from emporia_api.network.brave_search import ResearchSource, WebResearchResult
+    from emporia_api.providers import ProviderReply
+
+    queries = ["home storage market demand", "home storage competitor pricing"]
+    private_task = "Assess this confidential internal product opportunity."
+    search_calls = []
+    captured_prompt = []
+
+    payload = {
+        "provider": "openai",
+        "model": "gpt-5",
+        "task": private_task,
+        "max_tokens": 128,
+        "web_research": True,
+        "research_queries": queries,
+        "research_country": "pk",
+        "research_lang": "en",
+    }
+    job_id, workspace_id, user_id = create_job(
+        client,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+    )
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            content = request.messages[1].content
+            captured_prompt.append(content)
+            assert private_task in content
+            assert "Explicit queries: " + ", ".join(queries) in content
+            assert "Query coverage:" in content
+            assert "Matched queries: " + ", ".join(queries) in content
+            assert "Lexical overlap heuristic:" in content
+            assert "Treat" not in content  # retrieved text is not promoted to instructions
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="Demand and competitor pricing findings with source citations.",
+                prompt_tokens=120,
+                completion_tokens=24,
+                total_tokens=144,
+                request_id="provider-background-research-1",
+            )
+
+    class FakeResearchClient:
+        async def search(
+            self,
+            query,
+            maximum_number_of_tokens=2048,
+            country="US",
+            search_lang="en",
+        ):
+            search_calls.append(query)
+            assert maximum_number_of_tokens == 2048
+            assert country == "PK"
+            assert search_lang == "en"
+            if query == queries[0]:
+                return WebResearchResult(
+                    query=query,
+                    request_id="brave-background-1",
+                    sources=(
+                        ResearchSource(
+                            index=1,
+                            url="https://www.market.example.com/storage?utm_source=one#overview",
+                            title="Home storage market demand report",
+                            hostname="www.market.example.com",
+                            snippets=("Home storage demand is growing across ecommerce.",),
+                            age=("Published this quarter",),
+                        ),
+                    ),
+                )
+            return WebResearchResult(
+                query=query,
+                request_id="brave-background-2",
+                sources=(
+                    ResearchSource(
+                        index=1,
+                        url="https://market.example.com/storage/",
+                        title="Home storage market demand report",
+                        hostname="market.example.com",
+                        snippets=("Competitor pricing and product margins vary.",),
+                        age=("Updated recently",),
+                    ),
+                    ResearchSource(
+                        index=2,
+                        url="https://pricing.example.org/storage",
+                        title="Home storage competitor pricing benchmarks",
+                        hostname="pricing.example.org",
+                        snippets=("Pricing benchmarks for home storage products.",),
+                        age=(),
+                    ),
+                ),
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    monkeypatch.setattr("emporia_api.main.brave_search_client", FakeResearchClient())
+
+    assert asyncio.run(run_one_job("worker-agent-research")) is True
+
+    completed_job = get_job(job_id)
+    assert completed_job.status == "succeeded"
+    assert completed_job.attempts == 1
+    assert completed_job.result_id
+    assert completed_job.locked_by is None
+    assert search_calls == queries
+    assert len(captured_prompt) == 1
+    assert private_task not in " ".join(search_calls)
+
+    with SessionLocal() as session:
+        run = session.get(AgentRun, completed_job.result_id)
+        assert run is not None
+        assert run.workspace_id == workspace_id
+        assert run.status == "completed"
+        assert run.output == "Demand and competitor pricing findings with source citations."
+        assert run.total_tokens == 144
+        sources = run.research_sources
+        assert len(sources) == 2
+        shared = next(
+            source for source in sources
+            if source["hostname"] == "www.market.example.com"
+        )
+        assert shared["matched_queries"] == queries
+        assert len(shared["snippets"]) == 2
+        assert shared["lexical_relevance_score"] > 0
+        assert any(
+            event.action == "job.succeeded"
+            and event.resource_id == job_id
+            for event in session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.workspace_id == workspace_id,
+                    AuditEvent.actor == user_id,
+                )
+            ).all()
+        )
