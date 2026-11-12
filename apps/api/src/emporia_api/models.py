@@ -109,9 +109,15 @@ class AgentRun(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
-    output_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
-    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(30, 16), nullable=True)
+    input_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    output_price_usd_per_million_tokens: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(30, 16), nullable=True
+    )
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     requested_max_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     budget_charged_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
@@ -184,12 +190,17 @@ class WorkspaceModelPrice(Base):
     workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
-    input_usd_per_million_tokens: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False)
-    output_usd_per_million_tokens: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False)
+    input_usd_per_million_tokens: Mapped[Decimal] = mapped_column(
+        Numeric(20, 10), nullable=False
+    )
+    output_usd_per_million_tokens: Mapped[Decimal] = mapped_column(
+        Numeric(20, 10), nullable=False
+    )
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
     )
+
 
 class SkillRun(Base):
     __tablename__ = "skill_runs"
