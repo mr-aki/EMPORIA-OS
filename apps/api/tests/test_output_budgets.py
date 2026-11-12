@@ -1,5 +1,5 @@
 from emporia_api.database import SessionLocal
-from emporia_api.models import WorkspaceMembership
+from emporia_api.models import AgentRun, WorkspaceMembership
 from emporia_api.providers import ProviderReply, ProviderRequestError
 
 
@@ -224,13 +224,52 @@ def test_budget_does_not_charge_runs_that_fail_before_provider_call(client, auth
 
 
 def test_owner_cannot_lower_budget_below_current_usage_and_viewers_cannot_change_it(
-    client, auth_headers
+    client, auth_headers, monkeypatch
 ):
     assert client.put(
         "/api/v1/usage/budget",
         headers=auth_headers,
         json={"monthly_output_tokens": 100},
     ).status_code == 200
+
+    class FakeGateway:
+        def configured(self, provider):
+            return True
+
+        async def complete(self, request):
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="Budgeted output.",
+                prompt_tokens=20,
+                completion_tokens=40,
+                total_tokens=60,
+                request_id="budget-lower-limit-check",
+            )
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    execution = client.post(
+        "/api/v1/agents/commerce-strategist/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Prepare a launch strategy.",
+            "max_tokens": 60,
+        },
+    )
+    assert execution.status_code == 201
+
+    too_low = client.put(
+        "/api/v1/usage/budget",
+        headers=auth_headers,
+        json={"monthly_output_tokens": 30},
+    )
+    assert too_low.status_code == 409
+    assert too_low.json()["detail"]["used"] == 40
+    assert client.get("/api/v1/usage/budget", headers=auth_headers).json()[
+        "monthly_output_token_limit"
+    ] == 100
 
     me = client.get("/api/v1/auth/me", headers=auth_headers).json()
     workspace_id = me["workspaces"][0]["id"]
@@ -279,3 +318,46 @@ def test_owner_cannot_lower_budget_below_current_usage_and_viewers_cannot_change
         json={"monthly_output_tokens": 0},
     )
     assert too_low.status_code == 422
+
+
+def test_in_progress_run_reserves_its_requested_output_tokens(client, auth_headers):
+    configured = client.put(
+        "/api/v1/usage/budget",
+        headers=auth_headers,
+        json={"monthly_output_tokens": 100},
+    )
+    assert configured.status_code == 200
+
+    me = client.get("/api/v1/auth/me", headers=auth_headers).json()
+    workspace_id = me["workspaces"][0]["id"]
+    with SessionLocal() as session:
+        session.add(AgentRun(
+            workspace_id=workspace_id,
+            agent_id="commerce-strategist",
+            agent_version="1.0.0",
+            provider="openai",
+            model="gpt-5",
+            status="running",
+            task="A currently executing task.",
+            requested_max_tokens=70,
+        ))
+        session.commit()
+
+    state = client.get("/api/v1/usage/budget", headers=auth_headers)
+    assert state.status_code == 200
+    assert state.json()["used_output_tokens"] == 0
+    assert state.json()["reserved_output_tokens"] == 70
+    assert state.json()["available_output_tokens"] == 30
+
+    blocked = client.post(
+        "/api/v1/agents/commerce-strategist/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Another task while the first is still running.",
+            "max_tokens": 31,
+        },
+    )
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"]["reserved"] == 70
