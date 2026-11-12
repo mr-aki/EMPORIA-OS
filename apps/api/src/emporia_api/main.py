@@ -2,7 +2,7 @@ import json
 from datetime import date
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from emporia_api.auth import (
     create_access_token,
     get_current_principal,
     hash_password,
+    rate_limit_signing_key,
     require_write_access,
     verify_password,
 )
@@ -28,6 +29,13 @@ from emporia_api.finance.frankfurter import (
     FXProviderError,
     FXProviderUnavailable,
     FXRateNotFound,
+)
+from emporia_api.login_rate_limits import (
+    LoginRateLimitExceeded,
+    clear_login_attempts,
+    enforce_login_attempt_limits,
+    login_subject_digest,
+    record_failed_login_attempts,
 )
 from emporia_api.idempotency import (
     create_run_once,
@@ -746,10 +754,41 @@ def register_account(payload: RegisterRequest, session: SessionDep):
 
 
 @app.post("/api/v1/auth/login", response_model=AuthTokenRead, tags=["auth"])
-def login_account(payload: LoginRequest, session: SessionDep):
-    """Authenticate a user and issue an access token bound to an active workspace membership."""
+def login_account(payload: LoginRequest, session: SessionDep, request: Request):
+    """Authenticate a user after enforcing shared email/IP failed-login limits."""
+    signing_key = rate_limit_signing_key()
+    email_digest = login_subject_digest("email", str(payload.email), signing_key)
+    client_ip = request.client.host if request.client is not None else "unknown"
+    ip_digest = login_subject_digest("ip", client_ip, signing_key)
+    rate_limit_subjects = (
+        ("email", email_digest, settings.login_attempts_per_email_window),
+        ("ip", ip_digest, settings.login_attempts_per_ip_window),
+    )
+    try:
+        enforce_login_attempt_limits(
+            session, rate_limit_subjects, settings.login_rate_limit_window_seconds
+        )
+    except LoginRateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again later.",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
     user = session.scalar(select(User).where(User.email == str(payload.email)))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+        try:
+            record_failed_login_attempts(
+                session, rate_limit_subjects, settings.login_rate_limit_window_seconds
+            )
+            session.commit()
+        except LoginRateLimitExceeded as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=429,
+                detail="Too many login attempts. Try again later.",
+                headers={"Retry-After": str(exc.retry_after)},
+            ) from exc
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password",
@@ -774,6 +813,8 @@ def login_account(payload: LoginRequest, session: SessionDep):
         raise HTTPException(status_code=403, detail="No membership exists for the selected workspace")
 
     _membership, workspace = selected
+    clear_login_attempts(session, "email", email_digest)
+    session.commit()
     return AuthTokenRead(
         access_token=create_access_token(user.id, workspace.id),
         expires_in=settings.jwt_access_token_minutes * 60,

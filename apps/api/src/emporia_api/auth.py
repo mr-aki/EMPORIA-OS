@@ -53,6 +53,11 @@ def _jwt_signing_key() -> str:
     )
 
 
+def rate_limit_signing_key() -> str:
+    """Return the active JWT key for keyed, non-reversible login-limit identifiers."""
+    return _jwt_signing_key()
+
+
 def create_access_token(user_id: str, workspace_id: str) -> str:
     now = datetime.now(UTC)
     expires = now + timedelta(minutes=settings.jwt_access_token_minutes)
