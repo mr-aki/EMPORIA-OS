@@ -140,6 +140,25 @@ class WorkspaceExecutionRateLimit(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class LoginAttemptRateLimit(Base):
+    __tablename__ = "login_attempt_rate_limits"
+    __table_args__ = (
+        UniqueConstraint(
+            "subject_type",
+            "subject_hash",
+            name="uq_login_attempt_rate_limit_subject",
+        ),
+        Index("ix_login_attempt_rate_limits_window_start", "window_start"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    subject_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    subject_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class WorkspaceOutputTokenBudget(Base):
     __tablename__ = "workspace_output_token_budgets"
     __table_args__ = (

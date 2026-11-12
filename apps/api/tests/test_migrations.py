@@ -32,7 +32,10 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0009_skill_evaluation_snapshots"
+        assert revision == "0010_login_attempt_rate_limits"
+        assert "uq_login_attempt_rate_limit_subject" in {
+            item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
+        }
         assert {"idempotency_key", "request_fingerprint"}.issubset(
             {column["name"] for column in inspector.get_columns("agent_runs")}
         )
@@ -47,6 +50,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         )
         assert "workspace_output_token_budgets" in inspector.get_table_names()
         assert "background_jobs" in inspector.get_table_names()
+        assert "login_attempt_rate_limits" in inspector.get_table_names()
         assert "business_action_requests" in inspector.get_table_names()
         assert {"action_type", "status", "requested_by", "approved_by", "inputs_json"}.issubset(
             {column["name"] for column in inspector.get_columns("business_action_requests")}
