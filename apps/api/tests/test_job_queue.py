@@ -409,8 +409,8 @@ def test_worker_settles_cost_from_the_workspace_model_price_snapshot(
                 workspace_id=workspace_id,
                 provider="openai",
                 model="gpt-5",
-                input_usd_per_million_tokens=Decimal("2"),
-                output_usd_per_million_tokens=Decimal("8"),
+                input_usd_per_million_tokens=Decimal(2),
+                output_usd_per_million_tokens=Decimal(8),
                 updated_by=user_id,
             )
         )
