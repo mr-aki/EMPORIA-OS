@@ -892,3 +892,140 @@ def test_fx_rate_query_date_is_validated_and_forwarded(client, auth_headers, mon
 
     assert response.status_code == 200
     assert response.json()["date"] == "2025-05-01"
+
+
+
+def test_multi_query_research_report_deduplicates_sources_and_tracks_coverage(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.network.brave_search import ResearchSource, WebResearchResult
+
+    calls = []
+
+    class FakeResearchClient:
+        async def search(
+            self,
+            query,
+            maximum_number_of_tokens=2048,
+            country="US",
+            search_lang="en",
+        ):
+            calls.append((query, maximum_number_of_tokens, country, search_lang))
+            if query == "home storage trends":
+                return WebResearchResult(
+                    query=query,
+                    request_id="request-1",
+                    sources=(
+                        ResearchSource(
+                            index=1,
+                            url="https://www.example.com/market?utm_source=first#top",
+                            title="Home storage market trends",
+                            hostname="www.example.com",
+                            snippets=("Online storage demand is increasing.",),
+                            age=("Published recently",),
+                        ),
+                    ),
+                )
+            return WebResearchResult(
+                query=query,
+                request_id="request-2",
+                sources=(
+                    ResearchSource(
+                        index=1,
+                        url="https://example.com/market/",
+                        title="Home storage market trends",
+                        hostname="example.com",
+                        snippets=("Pricing and product margin benchmarks.",),
+                        age=("Published recently",),
+                    ),
+                    ResearchSource(
+                        index=2,
+                        url="https://industry.example.org/pricing",
+                        title="Storage product pricing report",
+                        hostname="industry.example.org",
+                        snippets=("A pricing comparison for storage products.",),
+                        age=(),
+                    ),
+                ),
+            )
+
+    monkeypatch.setattr("emporia_api.main.brave_search_client", FakeResearchClient())
+    response = client.post(
+        "/api/v1/research/report",
+        headers=auth_headers,
+        json={
+            "queries": ["  home storage trends  ", "storage product pricing"],
+            "country": "pk",
+            "search_lang": "en",
+            "maximum_number_of_tokens": 2048,
+            "max_sources": 10,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert report["queries"] == ["home storage trends", "storage product pricing"]
+    assert report["total_unique_sources"] == 2
+    assert len(report["sources"]) == 2
+    shared = next(
+        source for source in report["sources"]
+        if source["hostname"] == "www.example.com"
+    )
+    assert shared["matched_queries"] == [
+        "home storage trends", "storage product pricing"
+    ]
+    assert len(shared["snippets"]) == 2
+    assert shared["lexical_relevance_score"] > 0
+    assert report["query_coverage"] == [
+        {"query": "home storage trends", "source_count": 1},
+        {"query": "storage product pricing", "source_count": 2},
+    ]
+    assert calls == [
+        ("home storage trends", 2048, "PK", "en"),
+        ("storage product pricing", 2048, "PK", "en"),
+    ]
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(event["action"] == "research.report.completed" for event in events)
+
+
+def test_multi_query_research_report_requires_authentication(client):
+    response = client.post(
+        "/api/v1/research/report",
+        json={"queries": ["market size", "competitor pricing"]},
+    )
+    assert response.status_code == 401
+
+
+def test_multi_query_research_report_rejects_duplicate_or_unbounded_queries(
+    client, auth_headers
+):
+    duplicate = client.post(
+        "/api/v1/research/report",
+        headers=auth_headers,
+        json={"queries": ["market size", " MARKET SIZE "]},
+    )
+    too_many = client.post(
+        "/api/v1/research/report",
+        headers=auth_headers,
+        json={"queries": [f"market query {index}" for index in range(6)]},
+    )
+    one_query = client.post(
+        "/api/v1/research/report",
+        headers=auth_headers,
+        json={"queries": ["only one query"]},
+    )
+    assert duplicate.status_code == 422
+    assert too_many.status_code == 422
+    assert one_query.status_code == 422
+
+
+def test_multi_query_research_report_returns_clear_missing_credential_error(
+    client, auth_headers
+):
+    response = client.post(
+        "/api/v1/research/report",
+        headers=auth_headers,
+        json={"queries": ["market size", "competitor pricing"]},
+    )
+    assert response.status_code == 503
+    assert "Brave Search is not configured" in response.json()["detail"]
