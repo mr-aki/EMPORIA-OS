@@ -105,6 +105,9 @@ All settings use the EMPORIA_ prefix.
 | EMPORIA_SKILL_MAX_OUTPUT_TOKENS | Server-side per-skill response ceiling; defaults to 2048 and must be 1–4096 |
 | EMPORIA_AGENT_RUNS_PER_MINUTE | Maximum new agent runs per workspace per UTC minute; defaults to 10 (1–600) |
 | EMPORIA_SKILL_RUNS_PER_MINUTE | Maximum new skill runs per workspace per UTC minute; defaults to 20 (1–600) |
+| EMPORIA_AGENT_MAX_CONCURRENT_RUNS | Maximum simultaneous active agent runs per workspace; defaults to 3 (1–100) |
+| EMPORIA_SKILL_MAX_CONCURRENT_RUNS | Maximum simultaneous active skill runs per workspace; defaults to 5 (1–100) |
+| EMPORIA_EXECUTION_LEASE_SECONDS | Recovery lease for abandoned running executions; defaults to 300 seconds (60–3600) |
 
 ### Migrating an earlier single-workspace database
 
@@ -218,6 +221,14 @@ New agent and skill runs are limited independently for each authenticated worksp
 The limiter uses an atomic database upsert and a single counter row per workspace/execution type, so the count is shared by API workers using the same SQLite or PostgreSQL database. When a workspace reaches its ceiling, the endpoint returns HTTP 429 with a `Retry-After` header. A matching idempotent replay does not consume another slot. New runs that later fail at a provider still consume a slot, as they were accepted execution attempts.
 
 This is a fixed-window request limiter for agent and skill runs. It is not a simultaneous-running-job cap, a monthly token budget, or a limiter for the general `/api/v1/ai/chat` endpoint. Keep clocks synchronized across database clients because minute windows are based on UTC wall-clock time.
+
+### Workspace concurrent execution limits
+
+Agent and skill runs also have separate active-execution ceilings per workspace. Defaults are 3 concurrent agent runs and 5 concurrent skill runs. Configure `EMPORIA_AGENT_MAX_CONCURRENT_RUNS` and `EMPORIA_SKILL_MAX_CONCURRENT_RUNS` (each accepts 1–100).
+
+Each accepted run stores an execution lease in its run row. A database lock on the workspace row serializes slot reservations across API workers sharing the same SQLite or PostgreSQL database. When a ceiling is reached, the endpoint returns HTTP 429 with active/limit details and `Retry-After`. A matching idempotent replay does not reserve another slot.
+
+Leases default to 300 seconds and can be configured with `EMPORIA_EXECUTION_LEASE_SECONDS` (60–3600). If a worker crashes and leaves a run marked `running`, the next new execution for that workspace and execution type finalizes the expired run as failed, records its full requested output-token reservation as charged, and reuses the slot. This is crash recovery on subsequent traffic, not a background scheduler; a quiet workspace may continue to show an expired run as running until its next execution request. The lease is not renewed while a request runs, so keep it longer than the maximum expected research/provider execution time.
 
 **Safety boundary:** these agents are advisory text agents. They do not have browser, shell, store-admin, payment, or other action tools. They cannot autonomously change a live business.
 
