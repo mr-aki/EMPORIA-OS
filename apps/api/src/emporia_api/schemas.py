@@ -15,6 +15,116 @@ from pydantic import (
 )
 
 
+
+CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$")]
+ProductStatus = Literal["draft", "active", "archived"]
+
+
+class ProductCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sku: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=5000)
+    vendor: str = Field(default="", max_length=160)
+    product_type: str = Field(default="", max_length=120)
+    status: ProductStatus = "draft"
+    price_amount: Decimal = Field(ge=0, max_digits=18, decimal_places=4)
+    cost_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=4)
+    currency: CurrencyCode = "USD"
+
+    @field_validator("sku")
+    @classmethod
+    def normalize_sku(cls, value: str) -> str:
+        import re
+
+        normalized = value.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9._/-]{0,79}", normalized):
+            raise ValueError("SKU must use letters, numbers, dot, underscore, slash or hyphen")
+        return normalized
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Product name cannot be blank")
+        return normalized
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def normalize_currency(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+
+class ProductUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sku: str | None = Field(default=None, min_length=1, max_length=80)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    vendor: str | None = Field(default=None, max_length=160)
+    product_type: str | None = Field(default=None, max_length=120)
+    status: ProductStatus | None = None
+    price_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=4)
+    cost_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=4)
+    currency: CurrencyCode | None = None
+
+    @field_validator("sku")
+    @classmethod
+    def normalize_sku(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        import re
+
+        normalized = value.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9._/-]{0,79}", normalized):
+            raise ValueError("SKU must use letters, numbers, dot, underscore, slash or hyphen")
+        return normalized
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Product name cannot be blank")
+        return normalized
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def normalize_currency(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_patch(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one product field must be supplied")
+        for field_name in ("sku", "name", "status", "price_amount", "currency"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return self
+
+
+class ProductRead(BaseModel):
+    id: str
+    sku: str
+    name: str
+    description: str
+    vendor: str
+    product_type: str
+    status: ProductStatus
+    price_amount: Decimal
+    cost_amount: Decimal | None
+    currency: str
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class VentureCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     description: str = Field(default="", max_length=5000)
@@ -433,9 +543,6 @@ class SkillRunRead(BaseModel):
     completed_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
-
-
-CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$")]
 
 
 class FXRateRead(BaseModel):
