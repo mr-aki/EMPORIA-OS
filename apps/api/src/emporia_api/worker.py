@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 import logging
 import os
 import socket
@@ -9,7 +10,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from fastapi import HTTPException, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, require_write_access
@@ -103,8 +104,47 @@ def _resolve_current_principal(session: Session, job: BackgroundJob) -> Principa
     return principal
 
 
+async def _renew_job_lease(job_id: str, worker_id: str) -> bool:
+    """Extend a running job lease only while the caller still owns it."""
+    now = utcnow()
+    with SessionLocal() as session:
+        result = session.execute(
+            update(BackgroundJob)
+            .where(
+                BackgroundJob.id == job_id,
+                BackgroundJob.status == "running",
+                BackgroundJob.locked_by == worker_id,
+            )
+            .values(locked_at=now, updated_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        session.commit()
+        return result.rowcount == 1
+
+
+async def _maintain_job_lease(job_id: str, worker_id: str) -> None:
+    """Heartbeat the lease periodically while an upstream execution is in flight."""
+    interval = max(1, settings.worker_lease_seconds // 3)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            renewed = await asyncio.to_thread(_renew_job_lease, job_id, worker_id)
+        except Exception:
+            logger.exception("Could not renew worker lease: id=%s", job_id)
+            continue
+        if not renewed:
+            logger.warning("Worker lost ownership of job lease: id=%s", job_id)
+            return
+
+
+async def _cancel_lease_heartbeat(task: asyncio.Task) -> None:
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
+
+
 async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
-    """Execute a claimed job only while this worker owns its lease."""
+    """Execute a claimed job while renewing and verifying this worker's lease."""
     with SessionLocal() as session:
         job = session.scalar(
             select(BackgroundJob).where(
@@ -116,6 +156,7 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
         if job is None:
             return False
 
+        heartbeat = asyncio.create_task(_maintain_job_lease(job_id, worker_id))
         try:
             from emporia_api.main import execute_agent, execute_skill
 
@@ -131,11 +172,22 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                     job.target_id, request, Response(), session, principal
                 )
             else:
+                await _cancel_lease_heartbeat(heartbeat)
+                if not await asyncio.to_thread(_renew_job_lease, job_id, worker_id):
+                    session.rollback()
+                    return False
+                session.refresh(job)
                 _record_job_failure(
                     session, job, "Unsupported background job kind", retryable=False
                 )
                 return True
 
+            await _cancel_lease_heartbeat(heartbeat)
+            if not await asyncio.to_thread(_renew_job_lease, job_id, worker_id):
+                session.rollback()
+                logger.warning("Discarding stale worker completion: id=%s", job_id)
+                return False
+            session.refresh(job)
             job.status = "succeeded"
             job.result_id = result.id
             job.last_error = ""
@@ -155,6 +207,12 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
             logger.info("Background job completed: id=%s kind=%s", job.id, job.kind)
             return True
         except HTTPException as exc:
+            await _cancel_lease_heartbeat(heartbeat)
+            if not await asyncio.to_thread(_renew_job_lease, job_id, worker_id):
+                session.rollback()
+                logger.warning("Discarding stale worker failure: id=%s", job_id)
+                return False
+            session.refresh(job)
             message = exc.detail if isinstance(exc.detail, str) else "Execution request rejected"
             _record_job_failure(
                 session, job, message, retryable=exc.status_code in RETRYABLE_HTTP_STATUSES
@@ -167,12 +225,19 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
             )
             return True
         except Exception:
+            await _cancel_lease_heartbeat(heartbeat)
+            if not await asyncio.to_thread(_renew_job_lease, job_id, worker_id):
+                session.rollback()
+                logger.warning("Discarding stale worker error: id=%s", job_id)
+                return False
+            session.refresh(job)
             logger.exception("Unexpected background job failure: id=%s", job.id)
             _record_job_failure(
                 session, job, "Unexpected worker execution failure", retryable=False
             )
             return True
-
+        finally:
+            await _cancel_lease_heartbeat(heartbeat)
 
 async def run_one_job(worker_id: str | None = None) -> bool:
     worker = worker_id or configured_worker_id()
