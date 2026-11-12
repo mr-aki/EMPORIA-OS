@@ -6,10 +6,10 @@ import httpx
 import pytest
 
 from emporia_api.finance.frankfurter import (
+    FrankfurterClient,
     FXProviderError,
     FXProviderUnavailable,
     FXRateNotFound,
-    FrankfurterClient,
 )
 
 
@@ -189,4 +189,4 @@ def test_frankfurter_rejects_invalid_amount_before_network():
         )
     )
     with pytest.raises(ValueError, match="positive finite"):
-        asyncio.run(client.convert(Decimal("0"), "USD", "EUR"))
+        asyncio.run(client.convert(Decimal(0), "USD", "EUR"))
