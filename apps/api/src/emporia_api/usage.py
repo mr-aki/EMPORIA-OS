@@ -134,7 +134,7 @@ def _aggregate(
             },
         )
         row["runs"] += count
-        status_key = f"{status}_runs"
+        status_key = f"{run_status}_runs"
         if status_key in row:
             row[status_key] += count
         row["prompt_tokens"] += prompt
