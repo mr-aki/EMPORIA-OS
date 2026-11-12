@@ -133,11 +133,12 @@ def test_worker_dispatches_agent_and_persists_success(client, monkeypatch):
     job_id = create_job()
     captured = {}
 
-    async def fake_execute(agent_id, payload, session, actor):
+    async def fake_execute(agent_id, payload, response, session, actor, idempotency_key=None):
         captured["agent_id"] = agent_id
         captured["task"] = payload.task
         captured["user_id"] = actor.user_id
         captured["role"] = actor.role
+        captured["idempotency_key"] = idempotency_key
         return SimpleNamespace(id="agent-run-result-1")
 
     monkeypatch.setattr("emporia_api.worker.execute_agent", fake_execute)
@@ -149,6 +150,7 @@ def test_worker_dispatches_agent_and_persists_success(client, monkeypatch):
         "task": "Prepare a launch plan.",
         "user_id": "local-development",
         "role": "owner",
+        "idempotency_key": f"job-{job_id}-attempt-1",
     }
     assert job.status == "succeeded"
     assert job.attempts == 1
@@ -172,6 +174,7 @@ def test_worker_dispatches_skill_jobs_through_skill_handler(client, monkeypatch)
     async def fake_execute(skill_id, payload, session, actor):
         captured["skill_id"] = skill_id
         captured["inputs"] = payload.inputs
+        captured["idempotency_key"] = idempotency_key
         return SimpleNamespace(id="skill-run-result-1")
 
     monkeypatch.setattr("emporia_api.worker.execute_skill", fake_execute)
@@ -185,6 +188,7 @@ def test_worker_dispatches_skill_jobs_through_skill_handler(client, monkeypatch)
             "geography": "Pakistan",
             "target_customer": "Small-apartment renters",
         },
+        "idempotency_key": f"job-{job_id}-attempt-1",
     }
     assert job.status == "succeeded"
     assert job.result_id == "skill-run-result-1"
@@ -230,7 +234,7 @@ def test_worker_retries_retryable_http_failures_then_succeeds(client, monkeypatc
     job_id = create_job()
     attempts = {"count": 0}
 
-    async def failing_execute(agent_id, payload, session, actor):
+    async def failing_execute(agent_id, payload, response, session, actor, idempotency_key=None):
         attempts["count"] += 1
         raise HTTPException(status_code=502, detail="Temporary provider failure")
 
@@ -248,7 +252,7 @@ def test_worker_retries_retryable_http_failures_then_succeeds(client, monkeypatc
         retry_job.available_at = utcnow() - timedelta(seconds=1)
         session.commit()
 
-    async def succeeding_execute(agent_id, payload, session, actor):
+    async def succeeding_execute(agent_id, payload, response, session, actor, idempotency_key=None):
         attempts["count"] += 1
         return SimpleNamespace(id="recovered-agent-run")
 
@@ -265,7 +269,7 @@ def test_worker_retries_retryable_http_failures_then_succeeds(client, monkeypatc
 def test_worker_stops_retrying_at_max_attempts(client, monkeypatch):
     job_id = create_job(max_attempts=1)
 
-    async def failing_execute(agent_id, payload, session, actor):
+    async def failing_execute(agent_id, payload, response, session, actor, idempotency_key=None):
         raise HTTPException(status_code=503, detail="Provider still unavailable")
 
     monkeypatch.setattr("emporia_api.worker.execute_agent", failing_execute)
