@@ -136,7 +136,7 @@ curl -X POST http://localhost:8000/api/v1/agents/commerce-strategist/runs \\
   }'
 ```
 
-Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. A run is marked failed when its provider is not configured or the upstream provider rejects/fails the request.
+Runs persist their task, output, status, token usage, provider request ID, and timestamps. Start/completion/failure events are added to the audit log. Known upstream failures and unexpected research/provider exceptions transition the run to a terminal failed state; unexpected exception details are not returned to API clients.
 
 **Agent contract:** `GET /api/v1/agents` also returns each specialist's category, expected deliverables, required context, version, and expertise. Internal system prompts remain private. All eight specialists execute through the same provider and run-history pipeline; newly added specialists are covered by endpoint-level execution tests.
 
