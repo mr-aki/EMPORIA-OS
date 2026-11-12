@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 from emporia_api.auth import Principal, get_current_principal
 from emporia_api.database import get_session
 from emporia_api.models import AgentRun, AuditEvent, SkillRun, WorkspaceModelPrice, utcnow
-from emporia_api.schemas import ModelName
 from emporia_api.output_budgets import (
     get_workspace_output_budget_state,
     set_workspace_output_budget,
 )
+from emporia_api.schemas import ModelName
 
 router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 SessionDep = Annotated[Session, Depends(get_session)]
