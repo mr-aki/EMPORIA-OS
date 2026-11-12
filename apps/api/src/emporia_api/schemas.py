@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator, model_validator
 
 
 class VentureCreate(BaseModel):
@@ -156,3 +156,56 @@ class ResearchRead(BaseModel):
     query: str
     sources: list[ResearchSourceRead]
     request_id: str | None = None
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=128)
+    display_name: str = Field(min_length=1, max_length=120)
+    workspace_name: str = Field(min_length=1, max_length=160)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+    workspace_id: str | None = Field(default=None, max_length=36)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class AuthTokenRead(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user_id: str
+    workspace_id: str
+
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
+class WorkspaceSummary(BaseModel):
+    id: str
+    name: str
+    role: str
+
+
+class WorkspaceCreated(WorkspaceSummary):
+    created_at: datetime
+
+
+class AuthMeRead(BaseModel):
+    user_id: str
+    email: EmailStr
+    display_name: str
+    is_active: bool
+    workspaces: list[WorkspaceSummary]
