@@ -401,7 +401,7 @@ def test_skill_run_api_returns_and_supplies_authoritative_calculations(
             return ProviderReply(
                 provider="openai",
                 model="gpt-5",
-                content="The calculated landed cost is 7.45 USD per unit.",
+                content="The calculated landed cost is 7.95 USD per unit.",
                 prompt_tokens=100,
                 completion_tokens=20,
                 total_tokens=120,
@@ -429,7 +429,7 @@ def test_skill_run_api_returns_and_supplies_authoritative_calculations(
     )
     assert response.status_code == 201
     result = response.json()
-    assert result["calculations"]["landed_cost_per_unit"] == 7.45
+    assert result["calculations"]["landed_cost_per_unit"] == 7.95
     assert result["calculations"]["duty_base_source"] == "provisional_supplier_unit_cost"
     assert result["skill_version"] == "1.1.0"
 
