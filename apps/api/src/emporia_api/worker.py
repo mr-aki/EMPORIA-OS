@@ -7,7 +7,7 @@ import socket
 from datetime import timedelta
 from uuid import uuid4
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -148,16 +148,20 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                 result = await execute_agent(
                     job.target_id,
                     request,
+                    Response(),
                     session,
                     principal,
+                    idempotency_key=f"job-{job.id}-attempt-{job.attempts}",
                 )
             elif job.kind == "skill":
                 request = SkillRunCreate.model_validate(payload)
                 result = await execute_skill(
                     job.target_id,
                     request,
+                    Response(),
                     session,
                     principal,
+                    idempotency_key=f"job-{job.id}-attempt-{job.attempts}",
                 )
             else:
                 _record_job_failure(
