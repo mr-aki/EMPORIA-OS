@@ -138,15 +138,28 @@ class BraveSearchClient:
             raise ResearchRequestError(f"Brave Search returned HTTP {response.status_code}")
         try:
             payload = response.json()
-            generic = (payload.get("grounding") or {}).get("generic") or []
-            source_metadata = payload.get("sources") or {}
+            if not isinstance(payload, dict):
+                raise TypeError("response root must be an object")
+            grounding = payload.get("grounding")
+            source_metadata = payload.get("sources")
+            if not isinstance(grounding, dict) or not isinstance(source_metadata, dict):
+                raise TypeError("response grounding and sources must be objects")
+            generic = grounding.get("generic")
+            if not isinstance(generic, list):
+                raise TypeError("grounding.generic must be a list")
             sources: list[ResearchSource] = []
             for item in generic:
+                if not isinstance(item, dict):
+                    continue
                 url = item.get("url")
                 if not isinstance(url, str) or not url.startswith(("https://", "http://")):
                     continue
                 metadata = source_metadata.get(url) or {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
                 snippets = item.get("snippets") or []
+                if not isinstance(snippets, list):
+                    snippets = []
                 sources.append(ResearchSource(
                     index=len(sources) + 1,
                     url=url,
