@@ -341,7 +341,7 @@ class CostTotals(BaseModel):
     runs: int = 0
     priced_runs: int = 0
     unpriced_runs: int = 0
-    estimated_cost_usd: Decimal = Decimal("0")
+    estimated_cost_usd: Decimal = Decimal(0)
 
 
 class ProviderModelCost(CostTotals):
