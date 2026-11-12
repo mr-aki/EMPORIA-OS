@@ -138,3 +138,13 @@ class SkillRun(Base):
         except (TypeError, ValueError):
             return {}
         return value if isinstance(value, dict) else {}
+
+    @property
+    def calculations(self) -> dict[str, Any]:
+        from emporia_api.skills.calculations import calculate_skill
+        from emporia_api.skills.registry import get_skill
+
+        skill = get_skill(self.skill_id)
+        if skill is None or skill.version != self.skill_version:
+            return {}
+        return calculate_skill(self.skill_id, self.inputs)
