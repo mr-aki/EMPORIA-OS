@@ -1043,22 +1043,14 @@ def test_agent_can_use_multiple_explicit_research_queries_and_merged_sources(
         "home storage competitor pricing",
     ]
     search_calls = []
+    captured_content = []
 
     class FakeGateway:
         def configured(self, provider):
             return provider == "openai"
 
         async def complete(self, request):
-            content = request.messages[1].content
-            assert "Assess this confidential internal product opportunity." in content
-            assert "Explicit queries: " + ", ".join(queries) in content
-            assert "Query coverage:" in content
-            assert "Matched queries: " + ", ".join(queries) in content
-            assert "Lexical overlap heuristic:" in content
-            assert "source-quality or factual-accuracy score" in content
-            assert "https://example.com/storage-market" in content
-            assert "https://competitor.example.org/pricing" in content
-            assert "confidential internal product opportunity" not in " ".join(search_calls)
+            captured_content.append(request.messages[1].content)
             return ProviderReply(
                 provider="openai",
                 model="gpt-5",
@@ -1138,13 +1130,28 @@ def test_agent_can_use_multiple_explicit_research_queries_and_merged_sources(
     run = response.json()
     assert run["status"] == "completed"
     assert search_calls == queries
+    assert len(captured_content) == 1
+    content = captured_content[0]
+    assert "Assess this confidential internal product opportunity." in content
+    assert "Explicit queries: " + ", ".join(queries) in content
+    assert "Query coverage:" in content
+    assert "Matched queries: " + ", ".join(queries) in content
+    assert "Lexical overlap heuristic:" in content
+    assert "source-quality or factual-accuracy score" in content
+    assert (
+        "https://www.example.com/storage-market?utm_source=search#overview"
+        in content
+    )
+    assert "https://competitor.example.org/pricing" in content
+    assert "confidential internal product opportunity" not in " ".join(search_calls)
     assert len(run["research_sources"]) == 2
     merged = next(
         source for source in run["research_sources"]
         if source["hostname"] == "www.example.com"
     )
     assert merged["matched_queries"] == queries
-    assert len(merged["snippets"]) == 1
+    assert len(merged["snippets"]) == 2
+    assert "Competitor pricing and margins vary." in content
     assert merged["lexical_relevance_score"] > 0
     assert any(
         event["action"] == "agent.run.completed"
