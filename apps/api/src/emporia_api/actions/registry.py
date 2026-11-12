@@ -2,9 +2,9 @@
 
 Definitions describe proposal payloads only. No external executor is registered in this release.
 """
+import math
 from dataclasses import dataclass
 from datetime import datetime
-import math
 from typing import Any
 
 
@@ -119,7 +119,8 @@ def get_action(action_id: str) -> ActionDefinition | None:
 
 def _parse_iso_datetime(value: str) -> datetime | None:
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else None
@@ -160,14 +161,13 @@ def validate_action_inputs(action_id: str, inputs: dict[str, Any]) -> list[str]:
                 or value <= 0
             ):
                 errors.append(f"{key}: expected a finite positive number")
-        elif field.kind == "string_array":
-            if (
-                not isinstance(value, list)
-                or not value
-                or len(value) > 50
-                or not all(isinstance(item, str) and item.strip() for item in value)
-            ):
-                errors.append(f"{key}: expected a non-empty array of at most 50 strings")
+        elif field.kind == "string_array" and (
+            not isinstance(value, list)
+            or not value
+            or len(value) > 50
+            or not all(isinstance(item, str) and item.strip() for item in value)
+        ):
+            errors.append(f"{key}: expected a non-empty array of at most 50 strings")
 
     if action_id == "orders.refund.issue" and isinstance(inputs.get("currency"), str):
         currency = inputs["currency"]
