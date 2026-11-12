@@ -79,6 +79,9 @@ class AuditEvent(Base):
 
 class AgentRun(Base):
     __tablename__ = "agent_runs"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "idempotency_key", name="uq_agent_runs_workspace_idempotency"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     workspace_id: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
@@ -94,6 +97,8 @@ class AgentRun(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     research_sources_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -113,6 +118,9 @@ class AgentRun(Base):
 
 class SkillRun(Base):
     __tablename__ = "skill_runs"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "idempotency_key", name="uq_skill_runs_workspace_idempotency"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     workspace_id: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
