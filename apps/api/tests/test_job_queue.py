@@ -152,7 +152,7 @@ def test_worker_dispatches_agent_and_persists_success(client, monkeypatch):
 def test_worker_dispatches_skill_jobs_through_skill_handler(client, monkeypatch):
     job_id = create_job(
         kind="skill",
-        target_id="pricing-review",
+        target_id="market-opportunity-scan",
         payload_json='{"provider":"openai","model":"gpt-5","inputs":{"price":49}}',
     )
     captured = {}
@@ -167,7 +167,7 @@ def test_worker_dispatches_skill_jobs_through_skill_handler(client, monkeypatch)
     assert asyncio.run(run_one_job("worker-skill")) is True
     job = get_job(job_id)
     assert captured == {
-        "skill_id": "pricing-review",
+        "skill_id": "market-opportunity-scan",
         "inputs": {"price": 49},
     }
     assert job.status == "succeeded"
