@@ -70,3 +70,12 @@ The API exposes public metadata (category, expertise, expected deliverables, and
 ## Engineering principle
 
 Prefer a small end-to-end capability that is real, testable, observable, and safe over a large catalogue of unconnected specifications. Every capability must advance through the lifecycle only when its evidence exists.
+
+## Skills implementation slice
+
+The Skills runtime adds a versioned 15-skill commerce pack with typed input contracts,
+unknown-field rejection, bounded payload validation, authenticated provider-backed
+execution, persisted workspace-scoped run history, and start/completion/failure audit
+events. Skills execute as advisory analysis only; they do not grant store, payment,
+supplier, advertising, fulfilment, or customer-action permissions. CI, evaluations, and
+security review remain release gates.

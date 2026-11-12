@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -186,3 +187,69 @@ class ResearchRead(BaseModel):
     query: str
     sources: list[ResearchSourceRead]
     request_id: str | None = None
+
+
+class SkillInputRead(BaseModel):
+    key: str
+    label: str
+    value_type: Literal["text", "number", "object", "array"]
+    required: bool
+    description: str
+    max_length: int | None = None
+    max_items: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+class SkillRead(BaseModel):
+    id: str
+    name: str
+    version: str
+    domain: str
+    description: str
+    objective: str
+    inputs: list[SkillInputRead]
+    output_sections: list[str]
+    lifecycle_status: str
+    execution_mode: Literal["advisory"] = "advisory"
+    external_actions_enabled: bool = False
+
+
+class SkillRunCreate(BaseModel):
+    provider: Literal["openai", "anthropic", "gemini", "openai-compatible"]
+    model: ModelName
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    max_tokens: int = Field(default=1800, ge=1, le=4096)
+    temperature: float | None = Field(default=0.2, ge=0, le=2)
+
+    @model_validator(mode="after")
+    def bound_input_payload(self):
+        if len(self.inputs) > 32:
+            raise ValueError("At most 32 skill input fields are allowed")
+        try:
+            serialized = json.dumps(self.inputs, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("inputs must contain JSON-safe values") from exc
+        if len(serialized.encode("utf-8")) > 16000:
+            raise ValueError("Serialized skill inputs must be at most 16000 bytes")
+        return self
+
+
+class SkillRunRead(BaseModel):
+    id: str
+    skill_id: str
+    skill_version: str
+    provider: str
+    model: str
+    status: Literal["running", "completed", "failed"]
+    inputs: dict[str, Any]
+    output: str
+    error_message: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    provider_request_id: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)

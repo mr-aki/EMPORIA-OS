@@ -190,3 +190,36 @@ curl -X POST http://localhost:8000/api/v1/agents/product-research-analyst/runs \
 The response contains source URLs, titles, hostnames, excerpts, and available page-age metadata. Agent run history stores the selected source evidence alongside the output so results can be reviewed later. Retrieved page text is untrusted external data; it is passed to the model as reference context, not as system instructions.
 
 **External dependency:** a valid Brave Search API key and active API entitlement are required for live searches. CI uses mocked HTTP responses and does not consume paid API requests. Respect the provider's quotas and rate limits. Search results are evidence to evaluate, not a guarantee that every source is accurate or authoritative.
+
+## Skill catalog and execution
+
+The first commerce skill pack contains 15 versioned advisory procedures. Skills are not
+permission grants: the runtime does not browse supplied URLs, call store APIs, send supplier
+messages, change prices, place orders, or launch campaigns.
+
+Authenticated endpoints:
+- GET /api/v1/skills — list metadata and input contracts.
+- GET /api/v1/skills?domain=sourcing — filter by domain.
+- GET /api/v1/skills/{skill_id} — inspect a skill contract.
+- POST /api/v1/skills/{skill_id}/runs — execute through a configured AI provider.
+- GET /api/v1/skill-runs and GET /api/v1/skill-runs/{run_id} — review run history.
+
+Example request body:
+
+    {
+      "provider": "openai",
+      "model": "gpt-5",
+      "inputs": {
+        "market": "Reusable home storage",
+        "geography": "United Kingdom",
+        "target_customer": "Renters in small urban apartments"
+      },
+      "max_tokens": 1800
+    }
+
+Each skill rejects unknown inputs and validates required fields and types before calling a
+provider. The server enforces `EMPORIA_SKILL_MAX_OUTPUT_TOKENS` (default 2048, allowed range
+1–4096) before persisting a run or calling the provider. Runs persist skill version, input data, result, provider usage, status, and
+timestamps. Start/completion/failure events are written to the audit log; history is
+workspace-scoped. Input values are untrusted data and cannot grant permissions or override
+the skill procedure. See ../../skills/README.md for the catalog and governance boundaries.
