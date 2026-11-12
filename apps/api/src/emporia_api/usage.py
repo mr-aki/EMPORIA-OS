@@ -132,7 +132,9 @@ def _aggregate(
             },
         )
         row["runs"] += count
-        row[f"{status}_runs"] = row.get(f"{status}_runs", 0) + count
+        status_key = f"{status}_runs"
+        if status_key in row:
+            row[status_key] += count
         row["prompt_tokens"] += prompt
         row["completion_tokens"] += completion
         row["total_tokens"] += total
