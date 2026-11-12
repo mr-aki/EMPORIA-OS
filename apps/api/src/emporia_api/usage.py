@@ -178,7 +178,7 @@ def _aggregate(
             },
         )
         values["runs"] += count
-        status_key = f"{status}_runs"
+        status_key = f"{run_status}_runs"
         if status_key in values:
             values[status_key] += count
         values["prompt_tokens"] += prompt
