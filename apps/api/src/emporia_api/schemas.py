@@ -251,6 +251,24 @@ class WorkspaceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)
 
 
+class WorkspaceMemberCreate(BaseModel):
+    email: EmailStr
+    role: Literal["admin", "operator", "viewer"] = "viewer"
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_member_email(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+class WorkspaceMemberRead(BaseModel):
+    user_id: str
+    email: EmailStr
+    display_name: str
+    role: Literal["owner", "admin", "operator", "viewer"]
+    created_at: datetime
+
+
 class WorkspaceSummary(BaseModel):
     id: str
     name: str
