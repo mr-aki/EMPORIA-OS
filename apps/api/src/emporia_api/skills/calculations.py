@@ -7,7 +7,7 @@ inputs and surface assumptions instead of inferring missing business data.
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 FOUR_PLACES = Decimal("0.0001")
