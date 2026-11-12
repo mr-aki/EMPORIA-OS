@@ -39,7 +39,10 @@ def verify_password(password: str, password_hash: str) -> bool:
 def _jwt_signing_key() -> str:
     if settings.jwt_secret is not None:
         key = settings.jwt_secret.get_secret_value()
-        if len(key) >= 32:
+        is_known_development_secret = key == "local-development-jwt-secret-change-before-deploy"
+        if len(key) >= 32 and (
+            settings.environment in {"development", "test"} or not is_known_development_secret
+        ):
             return key
     if settings.environment in {"development", "test"}:
         return "emporia-local-development-key-not-for-production-2026"
