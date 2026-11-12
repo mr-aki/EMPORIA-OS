@@ -10,8 +10,8 @@ from typing import Any
 
 from emporia_api.skills.registry import SkillDefinition
 
-_HEADING_PREFIX = re.compile(r"^\\s*(?:#{1,6}\\s+|[-*+]\\s+|\\d+[.)]\\s+)")
-_MARKDOWN_BOLD = re.compile(r"^\\*\\*(.+?)\\*\\*:?\\s*$")
+_HEADING_PREFIX = re.compile(r"^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)")
+_MARKDOWN_BOLD = re.compile(r"^\*\*(.+?)\*\*:?\s*$")
 
 
 def _normalise_heading(value: str) -> str:
