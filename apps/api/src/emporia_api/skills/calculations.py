@@ -7,7 +7,7 @@ inputs and surface assumptions instead of inferring missing business data.
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 
@@ -28,10 +28,10 @@ def _landed_cost(inputs: dict[str, Any]) -> dict[str, Any]:
     units = _d(inputs["units_per_shipment"])
     unit_cost = _d(inputs["supplier_unit_cost"])
     freight_total = _d(inputs["freight_total"])
-    duty_rate = _d(inputs["duty_rate_percent"]) / Decimal("100")
+    duty_rate = _d(inputs["duty_rate_percent"]) / Decimal(100)
     other_costs = _d(inputs["other_costs_per_unit"])
     selling_price = _d(inputs["selling_price"])
-    channel_fee_rate = _d(inputs.get("channel_fee_percent", 0)) / Decimal("100")
+    channel_fee_rate = _d(inputs.get("channel_fee_percent", 0)) / Decimal(100)
 
     explicit_duty_base = inputs.get("duty_base_per_unit")
     duty_base = _d(explicit_duty_base) if explicit_duty_base is not None else unit_cost
@@ -41,11 +41,11 @@ def _landed_cost(inputs: dict[str, Any]) -> dict[str, Any]:
     channel_fee = selling_price * channel_fee_rate
     contribution = selling_price - channel_fee - landed_cost
     margin = (
-        contribution / selling_price * Decimal("100")
+        contribution / selling_price * Decimal(100)
         if selling_price > 0 else None
     )
     break_even = (
-        landed_cost / (Decimal("1") - channel_fee_rate)
+        landed_cost / (Decimal(1) - channel_fee_rate)
         if channel_fee_rate < 1 else None
     )
 
@@ -94,8 +94,8 @@ def _inventory_reorder(inputs: dict[str, Any]) -> dict[str, Any]:
     lead_time_demand = daily_demand * lead_time
     reorder_point = lead_time_demand + safety_stock
     inventory_position = on_hand + inbound
-    reorder_gap = max(Decimal("0"), reorder_point - inventory_position)
-    suggested_order = max(reorder_gap, moq) if reorder_gap > 0 else Decimal("0")
+    reorder_gap = max(Decimal(0), reorder_point - inventory_position)
+    suggested_order = max(reorder_gap, moq) if reorder_gap > 0 else Decimal(0)
     days_cover = (
         inventory_position / daily_demand if daily_demand > 0 else None
     )
@@ -118,19 +118,19 @@ def _inventory_reorder(inputs: dict[str, Any]) -> dict[str, Any]:
 def _pricing_promotion(inputs: dict[str, Any]) -> dict[str, Any]:
     landed = _d(inputs["unit_landed_cost"])
     current_price = _d(inputs["current_price"])
-    marketplace_rate = _d(inputs["marketplace_fee_percent"]) / Decimal("100")
-    payment_rate = _d(inputs.get("payment_fee_percent", 0)) / Decimal("100")
-    discount_rate = _d(inputs.get("promo_discount_percent", 0)) / Decimal("100")
-    target_margin = _d(inputs["target_contribution_margin_percent"]) / Decimal("100")
+    marketplace_rate = _d(inputs["marketplace_fee_percent"]) / Decimal(100)
+    payment_rate = _d(inputs.get("payment_fee_percent", 0)) / Decimal(100)
+    discount_rate = _d(inputs.get("promo_discount_percent", 0)) / Decimal(100)
+    target_margin = _d(inputs["target_contribution_margin_percent"]) / Decimal(100)
     total_fee_rate = marketplace_rate + payment_rate
-    promo_price = current_price * (Decimal("1") - discount_rate)
+    promo_price = current_price * (Decimal(1) - discount_rate)
     current_fee = current_price * total_fee_rate
     promo_fee = promo_price * total_fee_rate
     current_contribution = current_price - current_fee - landed
     promo_contribution = promo_price - promo_fee - landed
     current_margin = current_contribution / current_price * 100 if current_price > 0 else None
     promo_margin = promo_contribution / promo_price * 100 if promo_price > 0 else None
-    price_floor_denominator = Decimal("1") - total_fee_rate - target_margin
+    price_floor_denominator = Decimal(1) - total_fee_rate - target_margin
     price_floor = (
         landed / price_floor_denominator
         if price_floor_denominator > 0 else None
