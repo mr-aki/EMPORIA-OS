@@ -1,8 +1,3 @@
-from sqlalchemy import select
-
-from emporia_api.models import BackgroundJob
-
-
 class FakeGateway:
     def configured(self, provider):
         return provider == "openai"
