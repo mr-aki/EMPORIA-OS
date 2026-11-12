@@ -16,11 +16,11 @@ from emporia_api.auth import (
     require_write_access,
     verify_password,
 )
-from emporia_api.config import settings
 from emporia_api.concurrency import (
     ConcurrentExecutionLimitExceeded,
     reserve_execution_slot,
 )
+from emporia_api.config import settings
 from emporia_api.database import get_session
 from emporia_api.finance.frankfurter import (
     FrankfurterClient,
