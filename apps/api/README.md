@@ -301,15 +301,76 @@ With Docker Compose, set the production values in the deployment environment and
 
 ```bash
 docker compose run --rm api alembic upgrade head
-docker compose up -d api
+docker compose up -d api worker
 ```
 
-For an existing database previously initialized by SQLAlchemy `create_all`, **back it up first** and compare its tables/columns/indexes with `migrations/versions/0001_initial_schema.py`. If and only if that existing schema matches this baseline, mark it as already being at the baseline without recreating tables:
+For an existing database previously initialized by SQLAlchemy `create_all` **before the background-job migration**, back it up and compare its tables/columns/indexes with `migrations/versions/0001_initial_schema.py`. If and only if that schema matches the four-table baseline and does not already contain a `background_jobs` table, stamp the exact baseline revision and then apply the queue migration:
 
 ```bash
-alembic stamp head
+alembic stamp 0001_initial_schema
+alembic upgrade head
 ```
 
-Then subsequent changes are applied using `alembic upgrade head`. Do not run the initial `upgrade head` against a populated legacy database that already has these tables but has not been stamped; it will attempt to create them again. The initial downgrade drops the four baseline tables and their data, so do not use downgrade as a routine rollback on a database with business data. Restore from a tested backup or use a forward corrective migration for production data.
+Only use `alembic stamp head` when the database has been checked against the complete current schema, including `background_jobs`. Never stamp an older four-table database directly at head; that would skip creation of the job queue table. A database already stamped at `0001_initial_schema` simply needs `alembic upgrade head` to add the queue. The initial downgrade drops the four baseline tables and their data; the next downgrade removes `background_jobs`. Do not use downgrade as a routine production rollback on a database with business data. Restore from a tested backup or use a forward corrective migration.
 
-The baseline migration covers `ventures`, `audit_events`, `agent_runs`, and `skill_runs`, including their workspace indexes. Migration tests use isolated SQLite databases and verify upgrade, downgrade, and non-destructive stamping.
+The migrations cover `ventures`, `audit_events`, `agent_runs`, `skill_runs`, and `background_jobs`, including workspace/status indexes. Migration tests use isolated SQLite databases and verify fresh upgrades, downgrades, and non-destructive stamping.
+
+
+## Durable background jobs
+
+Agent and skill runs can be submitted to a persistent database-backed queue instead of holding an HTTP request open. The existing synchronous run endpoints remain available.
+
+Authenticated endpoints:
+
+- `POST /api/v1/jobs` — enqueue a registered agent or skill.
+- `GET /api/v1/jobs` — list job metadata for the configured workspace.
+- `GET /api/v1/jobs/{job_id}` — inspect one job.
+- `POST /api/v1/jobs/{job_id}/cancel` — cancel before a worker claims it.
+
+Agent example:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs \\
+  -H "Authorization: Bearer $EMPORIA_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "kind": "agent",
+    "agent_id": "commerce-strategist",
+    "payload": {
+      "provider": "openai",
+      "model": "gpt-5",
+      "task": "Create a 30-day validation plan for a new home storage store."
+    },
+    "max_attempts": 3,
+    "idempotency_key": "home-storage-launch-plan-v1"
+  }'
+```
+
+Skill jobs use `"kind": "skill"`, a `skill_id`, and a validated `SkillRunCreate` payload under `payload`. Provider credentials remain server-side; the enqueue request never contains API keys or arbitrary action instructions.
+
+Job states are `queued`, `running`, `retry_wait`, `succeeded`, `failed`, and `cancelled`. A successful job's `result_id` references the generated agent or skill run. Detailed tasks and inputs are intentionally omitted from the job-list response; the existing run endpoints return the scoped run output.
+
+**Idempotency:** an optional `idempotency_key` is unique within the workspace. Repeating the same key and same payload returns the existing job; reusing the key with a different target or payload returns HTTP 409.
+
+**Worker process:** the worker is a separate process/container and shares the API database and provider configuration.
+
+Run locally from `apps/api`:
+
+```bash
+python -m emporia_api.worker
+```
+
+Docker Compose starts a separate `worker` service alongside the API:
+
+```bash
+docker compose up --build -d api worker
+docker compose logs -f worker
+```
+
+The worker polls according to `EMPORIA_WORKER_POLL_SECONDS` (default 2 seconds). Jobs are claimed with a database compare-and-set update; PostgreSQL additionally uses `FOR UPDATE SKIP LOCKED`. SQLite is suitable for local/single-host use, while PostgreSQL is the recommended shared database for multiple API/worker replicas.
+
+Claims have a lease (`EMPORIA_WORKER_LEASE_SECONDS`, default 300 seconds). A worker crash leaves a recoverable lease; another worker can reclaim the job after expiry. Retryable upstream HTTP failures (408, 429, 5xx gateway/service errors) receive bounded exponential backoff. Each job's `max_attempts` is restricted to 1–5 (default 3). Exhausted attempts become terminal failures and are audited.
+
+Cancellation only applies while a job is `queued` or `retry_wait`. A provider request already running is not forcefully interrupted; use provider timeouts and let the worker finish. A cancelled/failed job remains visible for audit/history. Retries may create a separate failed agent/skill run for each provider attempt; the job points to the successful result when one completes.
+
+The worker executes only the registered advisory agent/skill handlers. It has no shell/browser/store-admin/payment action tools. External business actions still require a later scoped tool registry, approval gates, budget controls and sandboxing.
