@@ -1,6 +1,7 @@
 """Regression tests for skill prompt boundaries and shared safety guardrails."""
-from emporia_api.providers import ProviderReply
+
 from emporia_api.skills.registry import SKILLS
+from emporia_api.providers import ProviderReply
 
 
 GLOBAL_GUARDRAILS = (
