@@ -73,6 +73,7 @@ def claim_next_job(session: Session, worker_id: str) -> str | None:
             updated_at=now,
             last_error="",
         )
+        .execution_options(synchronize_session=False)
     )
     if claimed.rowcount != 1:
         session.rollback()
