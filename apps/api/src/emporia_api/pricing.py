@@ -25,7 +25,7 @@ def settle_run_cost(
     run: object,
     prompt_tokens: int | None,
     completion_tokens: int | None,
-) -> Decimal | None:
+):
     """Calculate a USD estimate only when both rates and both usage counters are known."""
     from decimal import Decimal
 
