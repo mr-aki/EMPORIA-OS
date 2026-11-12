@@ -52,7 +52,13 @@ from emporia_api.skills.registry import get_skill, list_skills, validate_skill_i
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    if settings.auto_create_schema:
+        if settings.environment not in {"development", "test"}:
+            raise RuntimeError(
+                "Automatic schema creation is restricted to development and test. "
+                "Run Alembic migrations before starting production."
+            )
+        Base.metadata.create_all(bind=engine)
     yield
 
 
