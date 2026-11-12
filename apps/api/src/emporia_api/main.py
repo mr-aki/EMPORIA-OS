@@ -503,7 +503,7 @@ async def execute_agent(
         source_rows = []
         source_blocks = []
         for source in research["sources"][:8]:
-            snippets = [snippet[:900] for snippet in source["snippets"][:1]]
+            snippets = [snippet[:900] for snippet in source["snippets"][:3]]
             age = list(source["age"][:4])
             matched_queries = list(source["matched_queries"])
             relevance = source["lexical_relevance_score"]
