@@ -94,6 +94,7 @@ class AgentRun(Base):
     status: Mapped[str] = mapped_column(String(20), default="running", nullable=False)
     task: Mapped[str] = mapped_column(Text, nullable=False)
     output: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    evaluation_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}", nullable=False)
     error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -182,6 +183,25 @@ class SkillRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    @property
+    def evaluation(self) -> dict[str, Any] | None:
+        if self.status != "completed":
+            return None
+        try:
+            value = json.loads(self.evaluation_json or "{}")
+        except (TypeError, ValueError):
+            value = {}
+        if isinstance(value, dict) and value:
+            return value
+
+        # Backfill-compatible fallback for completed runs created before snapshots existed.
+        from emporia_api.skills.evaluation import evaluate_skill_output
+        from emporia_api.skills.registry import get_skill
+
+        skill = get_skill(self.skill_id)
+        if skill is None or skill.version != self.skill_version:
+            return None
+        return evaluate_skill_output(skill, self.output)
     @property
     def inputs(self) -> dict[str, Any]:
         try:
