@@ -8,7 +8,7 @@ from emporia_api.concurrency import (
     reserve_execution_slot,
 )
 from emporia_api.database import SessionLocal
-from emporia_api.models import AgentRun, SkillRun, Workspace
+from emporia_api.models import AgentRun, AuditEvent, SkillRun, Workspace
 
 
 def _workspace_id() -> str:
@@ -92,6 +92,15 @@ def test_expired_execution_lease_is_finalized_and_capacity_reused(client, auth_h
         assert stale.error_message == "Execution lease expired before the run completed"
         assert stale.budget_charged_tokens == 144
         assert stale.completed_at is not None
+        event = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.workspace_id == workspace_id,
+                AuditEvent.resource_id == expired_id,
+                AuditEvent.action == "agent.run.failed",
+            )
+        )
+        assert event is not None
+        assert event.detail == "execution_lease_expired"
 
 
 def test_agent_and_skill_concurrency_limits_are_independent(client, auth_headers):
