@@ -10,7 +10,7 @@ def test_skill_catalog_requires_auth_and_exposes_safe_metadata(client, auth_head
     response = client.get("/api/v1/skills", headers=auth_headers)
     assert response.status_code == 200
     skills = response.json()
-    assert len(skills) == 30
+    assert len(skills) == 45
     assert "market-opportunity-scan" in {item["id"] for item in skills}
     assert all(item["execution_mode"] == "advisory" for item in skills)
     assert all(item["external_actions_enabled"] is False for item in skills)
@@ -496,7 +496,7 @@ def test_second_skill_pack_has_complete_versioned_contracts():
     from emporia_api.skills.registry import SKILLS, get_skill
 
     ids = {skill.id for skill in SKILLS}
-    assert len(ids) == 30
+    assert len(ids) == 45
     assert SECOND_PACK_SKILL_IDS <= ids
 
     for skill_id in SECOND_PACK_SKILL_IDS:
@@ -548,3 +548,117 @@ def test_second_pack_skill_details_are_available_through_authenticated_api(clien
         "currency", "fulfilment_options", "orders_per_month", "units_per_order"
     }
     assert len(body["output_sections"]) >= 5
+
+
+
+THIRD_PACK_SKILL_IDS = {
+    "pricing-elasticity-scenario-planner",
+    "discount-ladder-review",
+    "lifecycle-segmentation-planner",
+    "subscription-retention-diagnostic",
+    "support-contact-taxonomy",
+    "customer-complaint-root-cause",
+    "product-launch-readiness",
+    "product-market-entry-brief",
+    "marketplace-policy-readiness",
+    "claims-substantiation-audit",
+    "paid-media-creative-brief",
+    "campaign-structure-audit",
+    "lifecycle-email-flow-planner",
+    "commerce-content-calendar",
+    "ecommerce-localization-brief",
+}
+
+
+def test_third_skill_pack_has_complete_versioned_contracts():
+    from emporia_api.skills.registry import SKILLS, get_skill
+
+    ids = {skill.id for skill in SKILLS}
+    assert len(ids) == 45
+    assert THIRD_PACK_SKILL_IDS <= ids
+
+    for skill_id in THIRD_PACK_SKILL_IDS:
+        skill = get_skill(skill_id)
+        assert skill is not None
+        assert skill.version == "1.0.0"
+        assert skill.objective.strip()
+        assert len(skill.inputs) >= 4
+        assert len({item.key for item in skill.inputs}) == len(skill.inputs)
+        assert len(skill.procedure) >= 5
+        assert len(skill.output_sections) >= 5
+        assert len(skill.guardrails) >= 2
+        assert skill.lifecycle_status == "implemented"
+        assert skill.public_metadata()["external_actions_enabled"] is False
+
+
+def test_third_pack_rejects_unbounded_discount_and_invalid_research_inputs():
+    from emporia_api.skills.registry import get_skill, validate_skill_inputs
+
+    discount = get_skill("discount-ladder-review")
+    assert discount is not None
+    errors = validate_skill_inputs(
+        discount,
+        {
+            "list_price": 10,
+            "unit_landed_cost": 5,
+            "variable_fee_percent": 8,
+            "discount_tiers": [110],
+            "currency": "USD",
+        },
+    )
+    assert errors == ["Input 'discount_tiers' item 0 must be at most 100"]
+
+    required = get_skill("claims-substantiation-audit")
+    assert required is not None
+    missing = validate_skill_inputs(required, {"claims": ["waterproof"]})
+    assert "Missing required input: supporting_evidence" in missing
+    assert "Missing required input: market_and_channel" in missing
+
+
+def test_third_pack_catalog_detail_and_domain_filter(client, auth_headers):
+    response = client.get("/api/v1/skills?domain=compliance", headers=auth_headers)
+    assert response.status_code == 200
+    compliance_ids = {item["id"] for item in response.json()}
+    assert compliance_ids == {
+        "marketplace-policy-readiness",
+        "claims-substantiation-audit",
+    }
+
+    detail = client.get(
+        "/api/v1/skills/ecommerce-localization-brief",
+        headers=auth_headers,
+    )
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["domain"] == "international"
+    assert body["version"] == "1.0.0"
+    assert {item["key"] for item in body["inputs"]} >= {
+        "source_market", "target_locale", "assets_to_localize"
+    }
+
+
+
+def test_array_numeric_item_bounds_are_published_and_enforced(client, auth_headers):
+    response = client.get("/api/v1/skills/discount-ladder-review", headers=auth_headers)
+    assert response.status_code == 200
+    tiers = {item["key"]: item for item in response.json()["inputs"]}["discount_tiers"]
+    assert tiers["item_minimum"] == 0
+    assert tiers["item_maximum"] == 100
+
+    excessive = client.post(
+        "/api/v1/skills/discount-ladder-review/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "inputs": {
+                "list_price": 50,
+                "unit_landed_cost": 20,
+                "variable_fee_percent": 10,
+                "discount_tiers": [10, 25, 101],
+                "currency": "USD",
+            },
+        },
+    )
+    assert excessive.status_code == 422
+    assert "item 2 must be at most 100" in str(excessive.json()["detail"])
