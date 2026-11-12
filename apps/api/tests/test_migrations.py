@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -5,8 +6,10 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 
-from emporia_api.database import Base
 from emporia_api import models as _models  # noqa: F401
+from emporia_api.config import settings
+from emporia_api.database import Base
+from emporia_api.main import app, lifespan
 
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -118,11 +121,6 @@ def test_existing_create_all_database_can_be_stamped_without_data_loss(
 
 
 def test_production_startup_rejects_schema_auto_creation(monkeypatch):
-    import asyncio
-
-    from emporia_api.main import app, lifespan
-    from emporia_api.config import settings
-
     monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "auto_create_schema", True)
 
