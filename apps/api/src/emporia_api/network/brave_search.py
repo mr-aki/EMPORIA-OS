@@ -161,15 +161,15 @@ class BraveSearchClient:
             payload = response.json()
             if not isinstance(payload, dict):
                 raise TypeError("Response root must be an object")
-            grounding = payload.get("grounding") or {}
+            grounding = payload.get("grounding")
+            source_metadata = payload.get("sources")
             if not isinstance(grounding, dict):
                 raise TypeError("Grounding must be an object")
-            generic = grounding.get("generic") or []
+            if not isinstance(source_metadata, dict):
+                raise TypeError("Sources metadata must be an object")
+            generic = grounding.get("generic")
             if not isinstance(generic, list):
                 raise TypeError("Grounding generic field must be an array")
-            source_metadata = payload.get("sources") or {}
-            if not isinstance(source_metadata, dict):
-                source_metadata = {}
 
             sources: list[ResearchSource] = []
             for item in generic:
