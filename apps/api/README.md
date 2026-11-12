@@ -50,7 +50,7 @@ curl http://localhost:8000/api/v1/auth/me \
   -H "Authorization: Bearer $EMPORIA_ACCESS_TOKEN"
 ~~~
 
-After provisioning the required accounts, set EMPORIA_ALLOW_REGISTRATION=false and restart the API. The current identity layer does not yet include email verification, MFA, password reset, refresh tokens, login throttling, or workspace invitations. Do not expose unrestricted registration on a public deployment.
+After provisioning the required accounts, set EMPORIA_ALLOW_REGISTRATION=false and restart the API. The current identity layer does not yet include email verification, MFA, password reset, refresh tokens, or workspace invitations. Failed logins are throttled by normalized email and the direct client IP using shared SQLite/PostgreSQL counters; the default window allows five failed attempts per email and 30 per IP per minute. Rate-limit keys are HMACed before storage, successful authentication clears the email counter, and responses include `Retry-After`. Do not expose unrestricted registration on a public deployment.
 
 ## Docker Compose
 
@@ -93,6 +93,9 @@ All settings use the EMPORIA_ prefix.
 | EMPORIA_JWT_ACCESS_TOKEN_MINUTES | Access-token lifetime; defaults to 60 minutes |
 | EMPORIA_ALLOW_REGISTRATION | Explicit opt-in for account registration; defaults to false |
 | EMPORIA_API_TOKEN | Development-only compatibility token for the original single-workspace setup |
+| EMPORIA_LOGIN_ATTEMPTS_PER_EMAIL_WINDOW | Failed login attempts per normalized email in the fixed window; defaults to 5 |
+| EMPORIA_LOGIN_ATTEMPTS_PER_IP_WINDOW | Failed login attempts per direct client IP in the fixed window; defaults to 30 |
+| EMPORIA_LOGIN_RATE_LIMIT_WINDOW_SECONDS | Fixed login failure window in seconds; defaults to 60 (10–3600) |
 | EMPORIA_WORKSPACE_ID | Legacy workspace identifier used while migrating an earlier deployment |
 | EMPORIA_LEGACY_WORKSPACE_OWNER_EMAIL | Email allowed to claim legacy workspace data during first registration |
 | EMPORIA_OPENAI_API_KEY | Optional server-side OpenAI API key |

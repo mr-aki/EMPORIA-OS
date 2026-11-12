@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     worker_backoff_max_seconds: int = Field(default=300, ge=1, le=3600)
     job_submissions_per_minute: int = Field(default=20, ge=1, le=600)
     research_reports_per_minute: int = Field(default=5, ge=1, le=120)
+    login_attempts_per_email_window: int = Field(default=5, ge=1, le=100)
+    login_attempts_per_ip_window: int = Field(default=30, ge=1, le=1000)
+    login_rate_limit_window_seconds: int = Field(default=60, ge=10, le=3600)
 
     # Provider credentials are server-side secrets; never return these values from an API.
     openai_api_key: SecretStr | None = None
