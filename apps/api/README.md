@@ -103,6 +103,8 @@ All settings use the EMPORIA_ prefix.
 | EMPORIA_BRAVE_SEARCH_API_KEY | Optional Brave Search LLM Context API key |
 | EMPORIA_AGENT_MAX_OUTPUT_TOKENS | Server-side per-agent response ceiling; defaults to 2048 and must be 1–4096 |
 | EMPORIA_SKILL_MAX_OUTPUT_TOKENS | Server-side per-skill response ceiling; defaults to 2048 and must be 1–4096 |
+| EMPORIA_AGENT_RUNS_PER_MINUTE | Maximum new agent runs per workspace per UTC minute; defaults to 10 (1–600) |
+| EMPORIA_SKILL_RUNS_PER_MINUTE | Maximum new skill runs per workspace per UTC minute; defaults to 20 (1–600) |
 
 ### Migrating an earlier single-workspace database
 
@@ -208,6 +210,14 @@ Agent and skill run endpoints accept an optional `Idempotency-Key` header. Use a
 - A replay returns the original terminal result, including a failed run. Idempotency records remain attached to run history; they are not currently expired automatically.
 
 Requests without this header retain the existing non-idempotent behavior. The database migration is applied through the normal `alembic upgrade head` startup path.
+
+### Workspace execution rate limits
+
+New agent and skill runs are limited independently for each authenticated workspace. The defaults are 10 agent runs and 20 skill runs per fixed UTC-minute window. Configure `EMPORIA_AGENT_RUNS_PER_MINUTE` and `EMPORIA_SKILL_RUNS_PER_MINUTE` (each accepts 1–600).
+
+The limiter uses an atomic database upsert and a single counter row per workspace/execution type, so the count is shared by API workers using the same SQLite or PostgreSQL database. When a workspace reaches its ceiling, the endpoint returns HTTP 429 with a `Retry-After` header. A matching idempotent replay does not consume another slot. New runs that later fail at a provider still consume a slot, as they were accepted execution attempts.
+
+This is a fixed-window request limiter for agent and skill runs. It is not a simultaneous-running-job cap, a monthly token budget, or a limiter for the general `/api/v1/ai/chat` endpoint. Keep clocks synchronized across database clients because minute windows are based on UTC wall-clock time.
 
 **Safety boundary:** these agents are advisory text agents. They do not have browser, shell, store-admin, payment, or other action tools. They cannot autonomously change a live business.
 
