@@ -49,7 +49,7 @@ def evaluate_skill_output(skill: SkillDefinition, output: str) -> dict[str, Any]
         "evaluation_type": "required_section_coverage",
         "skill_id": skill.id,
         "skill_version": skill.version,
-        "passed": bool(output and output.strip()) and not missing,
+        "passed": isinstance(output, str) and bool(output.strip()) and not missing,
         "evaluated_sections": len(skill.output_sections),
         "present_sections": present,
         "missing_sections": missing,
