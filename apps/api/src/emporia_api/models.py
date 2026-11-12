@@ -202,6 +202,7 @@ class SkillRun(Base):
         if skill is None or skill.version != self.skill_version:
             return None
         return evaluate_skill_output(skill, self.output)
+
     @property
     def inputs(self) -> dict[str, Any]:
         try:
