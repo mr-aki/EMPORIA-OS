@@ -196,6 +196,19 @@ The specialist metadata contract also includes category, expected deliverables, 
 
 A run records its task, output, status, provider/model, token usage, request ID, timestamps, and selected research sources. Start, completion, and failure events are audited. Unexpected provider and research exceptions also finalize the persisted run as failed without exposing internal exception details to API clients.
 
+### Idempotent execution requests
+
+Agent and skill run endpoints accept an optional `Idempotency-Key` header. Use a new random key for each logical execution request and reuse that same key only when retrying the exact same request after a timeout or connection interruption.
+
+- Keys are 8–128 characters and may contain letters, numbers, dots, underscores, colons, and hyphens.
+- Keys are unique within the authenticated workspace and execution type (agent or skill).
+- The server stores the key and a SHA-256 fingerprint of the normalized request on the persisted run. Database uniqueness constraints prevent two workers from creating separate runs for the same key.
+- A matching retry returns the original run with HTTP 200 and `Idempotency-Replayed: true`; it does not call research or the model provider again. If that run is still running, the response contains its current state and the client can poll its run ID.
+- Reusing a key with a different agent/skill, version, actor, or request body returns HTTP 409. Use a new key when an intentional new execution is required.
+- A replay returns the original terminal result, including a failed run. Idempotency records remain attached to run history; they are not currently expired automatically.
+
+Requests without this header retain the existing non-idempotent behavior. The database migration is applied through the normal `alembic upgrade head` startup path.
+
 **Safety boundary:** these agents are advisory text agents. They do not have browser, shell, store-admin, payment, or other action tools. They cannot autonomously change a live business.
 
 ### Network research connector

@@ -2,7 +2,7 @@ import json
 from datetime import date
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -23,6 +23,11 @@ from emporia_api.finance.frankfurter import (
     FXProviderError,
     FXProviderUnavailable,
     FXRateNotFound,
+)
+from emporia_api.idempotency import (
+    create_run_once,
+    find_replay,
+    fingerprint_request,
 )
 from emporia_api.models import (
     AgentRun,
@@ -248,8 +253,18 @@ def list_registered_agents(actor: AuthDep):
 async def execute_agent(
     agent_id: str,
     payload: AgentRunCreate,
+    response: Response,
     session: SessionDep,
     actor: AuthDep,
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            min_length=8,
+            max_length=128,
+            pattern=r"^[A-Za-z0-9._:-]+$",
+        ),
+    ] = None,
 ):
     """Run a specialist against a configured model provider; no external action tools are enabled."""
     require_write_access(actor)
@@ -265,6 +280,17 @@ async def execute_agent(
             ),
         )
 
+    fingerprint = fingerprint_request(
+        "agent", agent.id, agent.version, actor.user_id, payload
+    )
+    existing = find_replay(
+        session, AgentRun, actor.workspace_id, idempotency_key, fingerprint
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotency-Replayed"] = "true"
+        return existing
+
     run = AgentRun(
         workspace_id=actor.workspace_id,
         agent_id=agent.id,
@@ -273,19 +299,29 @@ async def execute_agent(
         model=payload.model,
         status="running",
         task=payload.task,
+        idempotency_key=idempotency_key,
+        request_fingerprint=fingerprint if idempotency_key else None,
     )
-    session.add(run)
-    session.flush()
-    session.add(AuditEvent(
-        workspace_id=actor.workspace_id,
-        actor=actor.user_id,
-        action="agent.run.started",
-        resource_type="agent_run",
-        resource_id=run.id,
-        detail=f"{agent.id}:{payload.provider}:{payload.model}",
-    ))
-    session.commit()
-    session.refresh(run)
+    run, replayed = create_run_once(
+        session,
+        AgentRun,
+        run,
+        actor.workspace_id,
+        idempotency_key,
+        fingerprint,
+        lambda run_id: AuditEvent(
+            workspace_id=actor.workspace_id,
+            actor=actor.user_id,
+            action="agent.run.started",
+            resource_type="agent_run",
+            resource_id=run_id,
+            detail=f"{agent.id}:{payload.provider}:{payload.model}",
+        ),
+    )
+    if replayed:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotency-Replayed"] = "true"
+        return run
 
     if not provider_gateway.configured(payload.provider):
         run.status = "failed"
@@ -752,8 +788,18 @@ def get_registered_skill(skill_id: str, actor: AuthDep):
 async def execute_skill(
     skill_id: str,
     payload: SkillRunCreate,
+    response: Response,
     session: SessionDep,
     actor: AuthDep,
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            min_length=8,
+            max_length=128,
+            pattern=r"^[A-Za-z0-9._:-]+$",
+        ),
+    ] = None,
 ):
     """Execute a bounded advisory procedure through the configured model gateway."""
     require_write_access(actor)
@@ -775,6 +821,17 @@ async def execute_skill(
             ),
         )
 
+    fingerprint = fingerprint_request(
+        "skill", skill.id, skill.version, actor.user_id, payload
+    )
+    existing = find_replay(
+        session, SkillRun, actor.workspace_id, idempotency_key, fingerprint
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotency-Replayed"] = "true"
+        return existing
+
     run = SkillRun(
         workspace_id=actor.workspace_id,
         skill_id=skill.id,
@@ -783,16 +840,29 @@ async def execute_skill(
         model=payload.model,
         status="running",
         inputs_json=json.dumps(payload.inputs, ensure_ascii=False, allow_nan=False),
+        idempotency_key=idempotency_key,
+        request_fingerprint=fingerprint if idempotency_key else None,
     )
-    session.add(run)
-    session.flush()
-    session.add(AuditEvent(
-        workspace_id=actor.workspace_id, actor=actor.user_id, action="skill.run.started",
-        resource_type="skill_run", resource_id=run.id,
-        detail=f"{skill.id}:{skill.version}:{payload.provider}:{payload.model}",
-    ))
-    session.commit()
-    session.refresh(run)
+    run, replayed = create_run_once(
+        session,
+        SkillRun,
+        run,
+        actor.workspace_id,
+        idempotency_key,
+        fingerprint,
+        lambda run_id: AuditEvent(
+            workspace_id=actor.workspace_id,
+            actor=actor.user_id,
+            action="skill.run.started",
+            resource_type="skill_run",
+            resource_id=run_id,
+            detail=f"{skill.id}:{skill.version}:{payload.provider}:{payload.model}",
+        ),
+    )
+    if replayed:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotency-Replayed"] = "true"
+        return run
 
     if not provider_gateway.configured(payload.provider):
         run.status = "failed"

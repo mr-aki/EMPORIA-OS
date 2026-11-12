@@ -32,7 +32,19 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0002_skill_runs"
+        assert revision == "0003_run_idempotency"
+        assert {"idempotency_key", "request_fingerprint"}.issubset(
+            {column["name"] for column in inspector.get_columns("agent_runs")}
+        )
+        assert {"idempotency_key", "request_fingerprint"}.issubset(
+            {column["name"] for column in inspector.get_columns("skill_runs")}
+        )
+        assert "uq_agent_runs_workspace_idempotency" in {
+            item["name"] for item in inspector.get_unique_constraints("agent_runs")
+        }
+        assert "uq_skill_runs_workspace_idempotency" in {
+            item["name"] for item in inspector.get_unique_constraints("skill_runs")
+        }
     finally:
         engine.dispose()
 
@@ -104,6 +116,12 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "workspace_memberships" in inspector.get_table_names()
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
+        }
+        assert {"idempotency_key", "request_fingerprint"}.issubset(
+            {column["name"] for column in inspector.get_columns("agent_runs")}
+        )
+        assert "uq_agent_runs_workspace_idempotency" in {
+            item["name"] for item in inspector.get_unique_constraints("agent_runs")
         }
     finally:
         legacy_engine.dispose()
