@@ -339,3 +339,30 @@ The response aggregates agent and skill runs, including run status counts, provi
 
 This endpoint reports token usage, not monetary spend. Emporia does not invent costs from model names: a future cost ledger must use an explicitly configured, versioned pricing source before reporting currency amounts.
 
+
+### Monthly workspace output-token budget
+
+Monthly output-token budgets are opt-in and configured by a workspace owner or admin:
+
+~~~http
+PUT /api/v1/usage/budget
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{"monthly_output_tokens": 1000000}
+~~~
+
+Read the current workspace budget and its current UTC calendar-month usage:
+
+~~~http
+GET /api/v1/usage/budget
+Authorization: Bearer <access-token>
+~~~
+
+The response separates settled `used_output_tokens` from `reserved_output_tokens` held by currently running agent and skill executions. New runs reserve their requested `max_tokens` in the same database transaction as the run record. On success, the reservation is settled to provider-reported completion/output tokens; when the provider does not report that count, the full reservation is charged conservatively. A run that fails after a provider request was attempted is also charged its full requested output ceiling because the upstream request may have been processed. Failures before the model call, such as an unconfigured provider or failed web research, release the reservation without charging output tokens.
+
+A request that would exceed the configured workspace/month limit returns HTTP 429 with a `Retry-After` value for the next UTC month. The idempotency replay check happens first, so a legitimate retry does not reserve tokens twice. A budget cannot be lowered below already settled usage plus active reservations; the update returns HTTP 409 instead.
+
+**Scope:** this is a completion/output-token budget for agent and skill runs only. Prompt/input tokens, Brave Search requests, general `/api/v1/ai/chat` calls, provider currency pricing, and other provider charges are not included. It is not a monetary billing or total provider-spend cap. A workspace without a configured budget remains unlimited by this control. Budget periods use UTC calendar months.
+
+
