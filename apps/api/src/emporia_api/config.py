@@ -1,4 +1,4 @@
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     api_token: str = "change-me-before-deploy"
     workspace_id: str = "local-workspace"
     cors_origins: str = ""
+    agent_max_output_tokens: int = Field(default=2048, ge=1, le=4096)
+    skill_max_output_tokens: int = Field(default=2048, ge=1, le=4096)
     jwt_secret: SecretStr | None = None
     jwt_issuer: str = "emporia-os"
     jwt_access_token_minutes: int = 60
