@@ -31,8 +31,9 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | Audit events | implemented | Persistent event records for venture changes, AI calls, agent runs, research calls, and workspace creation |
 | AI provider gateway | implemented | OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible adapters; upstream HTTP contracts are tested with mocks |
 | Specialist agent runtime | implemented | Eight versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
-| Network research | implemented | Explicit Brave Search connector, bounded search requests, source metadata, and untrusted external-context handling |
-| Commerce skills | implemented | 15 versioned advisory skills, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, and audit events |
+| Network research | implemented | Explicit Brave Search connector, bounded regional search requests, source metadata, response validation, rate-limit mapping, and untrusted external-context handling |
+| FX reference rates | implemented | Keyless Frankfurter daily rate client with latest/historical lookup, in-process caching, Decimal conversion, request validation, and workspace audit events |
+| Commerce skills | implemented | 30 versioned advisory skills across two implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, and audit events |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
 
