@@ -421,9 +421,10 @@ compare-and-set update. It retries selected transient HTTP failures with bounded
 backoff, and recovers abandoned worker leases. Configure
 `EMPORIA_WORKER_POLL_SECONDS`, `EMPORIA_WORKER_LEASE_SECONDS`,
 `EMPORIA_WORKER_BACKOFF_BASE_SECONDS` and `EMPORIA_WORKER_BACKOFF_MAX_SECONDS`.
-The worker lease must exceed the longest expected provider call; this first version does not
-renew leases during execution. A lease-expired job is eligible for another attempt until its
-configured attempt limit is reached.
+The worker renews its lease periodically while a provider call is in flight and verifies
+ownership again before recording success or failure. If another worker has already acquired the
+job, the stale worker does not overwrite that newer lease or job state. A lease-expired job is
+eligible for another attempt until its configured attempt limit is reached.
 
 **Authorization boundary:** enqueue requires a registered JWT user with a write-capable
 workspace role. Before execution, the worker rechecks that the original account is still active
