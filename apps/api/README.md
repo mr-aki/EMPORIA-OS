@@ -416,7 +416,7 @@ metadata. `POST /api/v1/jobs/{job_id}/cancel` cancels a queued or retry-waiting 
 cannot interrupt an upstream provider request already in progress. Job API responses never
 include the submitted task/input payload.
 
-The worker claims jobs with a database transaction, PostgreSQL row locking and a conditional
+Job submission is rate-limited per workspace per UTC minute (default 20, configurable with\n`EMPORIA_JOB_SUBMISSIONS_PER_MINUTE`). Replaying an identical idempotency key does not consume\nan additional submission slot.\n\nThe worker claims jobs with a database transaction, PostgreSQL row locking and a conditional
 compare-and-set update. It retries selected transient HTTP failures with bounded exponential
 backoff, and recovers abandoned worker leases. Configure
 `EMPORIA_WORKER_POLL_SECONDS`, `EMPORIA_WORKER_LEASE_SECONDS`,
