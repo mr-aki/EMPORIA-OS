@@ -40,6 +40,7 @@ These are product goals, not claims that every module exists today.
 | Audit trail | Persistent audit events for venture, AI, agent, research, and workspace lifecycle operations |
 | AI provider gateway | Server-side adapters for OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible endpoints |
 | Specialist agents | Eight versioned advisory agents with category/deliverable metadata, persisted runs, usage, status, and history |
+| Commerce skills | 15 versioned advisory procedures with typed inputs, validation, token ceilings, workspace-scoped run history, and audit events |
 | Web research | Explicit Brave Search LLM Context API connector with source metadata and untrusted-context handling |
 | Database lifecycle | Alembic migrations, Docker Compose startup migration, migration coverage for fresh and legacy schemas |
 
@@ -56,7 +57,7 @@ See [API setup and endpoint documentation](apps/api/README.md) and the [verified
 
 ## Explicit limits
 
-- Agent runs are advisory text generation. Models cannot execute shell commands, browse arbitrary sites, change a storefront, issue refunds, move money, or perform other business actions.
+- Agent and skill runs are advisory text generation. Models cannot execute shell commands, browse arbitrary sites, change a storefront, issue refunds, move money, or perform other business actions.
 - Live model and Brave requests require the operator's own server-side API credentials and provider entitlements. Automated tests mock upstream HTTP calls.
 - Workspace invitations, email verification, MFA, password reset, refresh-token rotation, and a full identity-provider integration are not implemented.
 - The frontend dashboard, commerce connectors, async job queue, approval engine, permissioned tool runtime, and business-domain modules remain future implementation work.
