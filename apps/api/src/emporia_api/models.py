@@ -118,6 +118,25 @@ class AgentRun(Base):
         self.research_sources_json = json.dumps(value, ensure_ascii=False)
 
 
+
+class WorkspaceExecutionRateLimit(Base):
+    __tablename__ = "workspace_execution_rate_limits"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "execution_type",
+            name="uq_workspace_execution_rate_limit",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    execution_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class SkillRun(Base):
     __tablename__ = "skill_runs"
     __table_args__ = (
