@@ -28,7 +28,7 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | Venture CRUD and workspace scoping | `implemented` | Authenticated CRUD with workspace ID controlled by server configuration. |
 | Application audit trail | `implemented` | Database-backed audit events for current API mutations and agent execution. |
 | AI provider gateway | `implemented` | OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible adapters; HTTP adapter tests use mocked transports. |
-| Advisory specialist runtime | `implemented` | Eight versioned specialist definitions, authenticated run endpoint, persisted status/output/token usage, and audit events. |
+| Advisory specialist runtime | `implemented` | Eight versioned specialist definitions, authenticated run endpoint, persisted status/output/token usage, audit events, and terminal failure handling for unexpected research/provider exceptions. |
 | Explicit network research | `implemented` | Brave Search LLM Context API adapter; callers must provide a separate research query. Live use requires a server-side Brave API key. |
 | Automated API checks | `implemented` | GitHub Actions workflow runs Ruff and pytest on Python 3.12. |
 
@@ -61,7 +61,7 @@ The API exposes public metadata (category, expertise, expected deliverables, and
 
 ## Next engineering sequence
 
-1. Harden agent execution: budgets, quotas, idempotency, cancellation, and crash-safe run lifecycle.
+1. Finish agent execution hardening: budgets, quotas, idempotency, cancellation, and crash-safe recovery for process interruption.
 2. Add policy-governed read-only tools and evidence capture before any write-capable tools.
 3. Add explicit approval records and scoped write actions for low-risk commerce operations.
 4. Build the operator dashboard and connect it to the authenticated API.

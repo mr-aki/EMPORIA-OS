@@ -397,3 +397,92 @@ def test_additional_specialists_execute_through_agent_runtime(
     assert response.json()["status"] == "completed"
     assert response.json()["agent_id"] == agent_id
     assert response.json()["total_tokens"] == 110
+
+
+def test_agent_run_finalizes_unexpected_provider_exception_safely(
+    client, auth_headers, monkeypatch
+):
+    class BrokenGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            raise RuntimeError("private-upstream-token-must-not-leak")
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", BrokenGateway())
+    response = client.post(
+        "/api/v1/agents/pricing-unit-economics-analyst/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Evaluate a product price and margin structure.",
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Unexpected provider execution failure"
+    assert "private-upstream-token-must-not-leak" not in response.text
+
+    history = client.get("/api/v1/agent-runs", headers=auth_headers).json()
+    assert history[0]["status"] == "failed"
+    assert history[0]["error_message"] == "Unexpected provider execution failure"
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(
+        event["action"] == "agent.run.failed"
+        and event["detail"] == "provider_unexpected_failure"
+        for event in events
+    )
+
+
+def test_agent_run_finalizes_unexpected_research_exception_safely(
+    client, auth_headers, monkeypatch
+):
+    from emporia_api.providers import ProviderReply
+
+    class FakeGateway:
+        def configured(self, provider):
+            return provider == "openai"
+
+        async def complete(self, request):
+            return ProviderReply(
+                provider="openai",
+                model="gpt-5",
+                content="This should not run when research fails.",
+                prompt_tokens=10,
+                completion_tokens=10,
+                total_tokens=20,
+                request_id="unused",
+            )
+
+    class BrokenResearchClient:
+        async def search(self, query, maximum_number_of_tokens=4000):
+            raise RuntimeError("private-search-credential-must-not-leak")
+
+    monkeypatch.setattr("emporia_api.main.provider_gateway", FakeGateway())
+    monkeypatch.setattr("emporia_api.main.brave_search_client", BrokenResearchClient())
+    response = client.post(
+        "/api/v1/agents/customer-voice-analyst/runs",
+        headers=auth_headers,
+        json={
+            "provider": "openai",
+            "model": "gpt-5",
+            "task": "Analyse customer feedback themes.",
+            "web_research": True,
+            "research_query": "public customer review themes for reusable storage",
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Unexpected research execution failure"
+    assert "private-search-credential-must-not-leak" not in response.text
+
+    history = client.get("/api/v1/agent-runs", headers=auth_headers).json()
+    assert history[0]["status"] == "failed"
+    assert history[0]["error_message"] == "Unexpected research execution failure"
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(
+        event["action"] == "agent.run.failed"
+        and event["detail"] == "research_unexpected_failure"
+        for event in events
+    )
