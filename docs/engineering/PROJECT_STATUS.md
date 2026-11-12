@@ -36,6 +36,7 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | FX reference rates | implemented | Keyless Frankfurter daily rate client with latest/historical lookup, in-process caching, Decimal conversion, request validation, and workspace audit events |
 | Commerce skills | implemented | 60 versioned advisory skills across four implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, audit events, and required-output section/body evaluation |
 | Action governance | implemented | Four allow-listed commerce proposal types, typed validation, separate owner/admin approval, requester separation-of-duties, owner-managed existing-user onboarding, cancellation, workspace audit/idempotency, and fail-closed execution gate; no external executors registered |
+| Workspace model cost ledger | implemented | Owner/admin-configured per-workspace provider/model USD rates, immutable agent/skill run snapshots, Decimal settlement from provider token counters, workspace-scoped daily/provider/model totals, and explicit unpriced counts; excludes chat/research costs and is not invoice-grade |
 | Durable background execution | implemented | PostgreSQL-backed workspace-scoped jobs; idempotent enqueue/list/get/cancel; atomic claims, bounded retries, lease recovery and periodic lease renewal; current account and membership are revalidated before dispatch; separate worker container; only advisory agent/skill handlers are available |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
@@ -49,7 +50,7 @@ The latest API pull request must pass GitHub Actions before its changes are cons
 - The legacy static bearer token is accepted only in development mode. Production deployments must use JWT authentication and a strong JWT signing secret.
 - The current identity layer does not yet provide email verification, MFA, password reset, refresh-token rotation, or workspace invitations.
 - Login failure throttling is database-backed across API workers. Its limits are per normalized email and direct socket IP; deployments behind proxies must configure their trusted proxy/network boundary correctly rather than trusting arbitrary client-supplied forwarding headers.
-- Agent models have no action tools. Commerce actions, permission grants, approval records, budgets, sandboxing, and revocation enforcement must be implemented before enabling external actions.
+- The governance API records allow-listed commerce proposals and separate owner/admin decisions, but agent models have no action tools and no external executor is registered. Live store, inventory, campaign, order, or payment mutations remain disabled; permissioned adapters, spend controls, sandboxing, and revocation enforcement are future work.
 - Live external API behavior depends on operator-supplied credentials and the terms, rate limits, and quotas of each provider.
 
 ## Not implemented
@@ -60,7 +61,7 @@ The latest API pull request must pass GitHub Actions before its changes are cons
 - Workflow scheduler, multi-agent coordination, full agent reasoning/evaluation service, and operator-facing dead-letter tooling.
 - External business-action adapters, spend/budget controls, execution sandbox, compensating transactions, and live commerce-system permissions.
 - Team invitations and full identity lifecycle features.
-- Production hardening evidence: threat model, independent security review, rate limiting, backup/restore drills, monitoring/alerting, load tests, disaster recovery, and a deployment-specific release gate.
+- Production hardening evidence: threat model, independent security review, deployment-wide abuse/rate-limit validation, backup/restore drills, monitoring/alerting, load tests, disaster recovery, and a deployment-specific release gate.
 
 ## Engineering principle
 

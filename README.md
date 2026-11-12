@@ -36,14 +36,16 @@ These are product goals, not claims that every module exists today.
 | Capability | Current implementation |
 |---|---|
 | API and persistence | FastAPI service, SQLAlchemy records, venture CRUD, health checks, SQLite local mode, PostgreSQL deployment path |
-| Identity and workspaces | Password-based registration/login, JWT access tokens, workspace memberships, role-based write checks, workspace isolation |
+| Identity and workspaces | Password-based registration/login, JWT access tokens, workspace memberships, role-based write checks, workspace isolation, HMAC-pseudonymized failed-login throttling |
 | Audit trail | Persistent audit events for venture, AI, agent, research, and workspace lifecycle operations |
 | AI provider gateway | Server-side adapters for OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible endpoints |
 | Specialist agents | Eight versioned advisory agents with category/deliverable metadata, persisted runs, usage, status, and history |
-| Commerce skills | 60 versioned advisory procedures across three implementation packs covering strategy, research, marketing, merchandising, sourcing, pricing, operations and retention |
+| Commerce skills | 60 versioned advisory procedures across four implementation packs covering strategy, research, marketing, merchandising, sourcing, pricing, operations and retention |
 | Web research | Explicit Brave Search LLM Context API connector with source metadata and untrusted-context handling |
 | Database lifecycle | Alembic migrations, Docker Compose startup migration, migration coverage for fresh and legacy schemas |
 | Finance reference rates | Authenticated historical/latest FX lookups and Decimal conversion through the keyless Frankfurter daily-reference API |
+| Durable execution queue | PostgreSQL-backed workspace jobs for advisory agent/skill runs, idempotent enqueue, atomic claims, bounded retries, lease renewal and recovery |
+| Usage cost ledger | Workspace-configured USD token rates, immutable per-run snapshots, Decimal estimates, and priced/unpriced workspace reports |
 | Action governance | Workspace-scoped proposal contracts, separate owner/admin approval, request cancellation, audit trail, and fail-closed execution gate; no live executors |
 
 See [API setup and endpoint documentation](apps/api/README.md) and the [verified project status](docs/engineering/PROJECT_STATUS.md).
@@ -62,7 +64,7 @@ See [API setup and endpoint documentation](apps/api/README.md) and the [verified
 - Agent and skill runs are advisory text generation. Models cannot execute shell commands, browse arbitrary sites, change a storefront, issue refunds, move money, or perform other business actions.
 - Live model and Brave requests require the operator's own server-side API credentials and provider entitlements. Automated tests mock upstream HTTP calls.
 - Workspace invitations, email verification, MFA, password reset, refresh-token rotation, and a full identity-provider integration are not implemented.
-- The frontend dashboard, commerce connectors, async job queue, approval engine, permissioned tool runtime, and business-domain modules remain future implementation work.
+- The production frontend/dashboard, direct commerce connectors, workflow scheduler, multi-agent coordination, permissioned tool runtime, and full business-domain modules remain future work. The existing queue dispatches advisory agent/skill runs only; the approval API records proposals but has no external executor.
 - No production-readiness or security-certification claim is made.
 
 ## Development lifecycle
