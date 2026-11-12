@@ -29,7 +29,7 @@ def test_evaluator_rejects_required_headings_with_empty_bodies():
     skill = get_skill("customer-acquisition-cost-review")
     assert skill is not None
 
-    output = "\\n\\n".join(f"## {section}\\n   " for section in skill.output_sections)
+    output = "\n\n".join(f"## {section}\n   " for section in skill.output_sections)
     result = evaluate_skill_output(skill, output)
 
     assert result["passed"] is False
