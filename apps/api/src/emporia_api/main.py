@@ -581,12 +581,6 @@ async def execute_agent(
 
     run.status = "completed"
     run.output = reply.content
-    run.evaluation_json = json.dumps(
-        evaluate_skill_output(skill, run.output),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
@@ -1081,6 +1075,12 @@ async def execute_skill(
 
     run.status = "completed"
     run.output = reply.content
+    run.evaluation_json = json.dumps(
+        evaluate_skill_output(skill, run.output),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
     run.prompt_tokens = reply.prompt_tokens or 0
     run.completion_tokens = reply.completion_tokens or 0
     run.total_tokens = reply.total_tokens or 0
