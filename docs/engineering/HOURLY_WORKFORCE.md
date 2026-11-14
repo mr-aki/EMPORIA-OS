@@ -12,7 +12,7 @@ The workflow launches 24 independently scheduled jobs:
 - Ruff lint and Python source compilation.
 - A fresh SQLite database migration through the current Alembic head.
 - OpenAPI generation and duplicate operation-ID validation.
-- Installed dependency consistency, repository-local Markdown links, and API wheel build.
+- Installed dependency consistency, repository-local Markdown links, and isolated API wheel build.
 
 Every worker writes a pass/fail result to its GitHub Actions job summary. Test output and
 tracebacks remain in the normal job log. A failed worker fails its own job; the matrix
