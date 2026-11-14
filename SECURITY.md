@@ -18,6 +18,10 @@ Do not publish exploit details in a public issue. Use GitHub's private vulnerabi
 - Pin and scan dependencies; review transitive licenses and advisories.
 - Exercise backup restoration and incident response before production deployment.
 
-## Current limitations
+## Current scope and limitations
 
-The repository is currently a documentation and governance bootstrap, not a production application. Do not connect live commerce accounts or use it to process customer or payment data.
+Emporia currently contains an executable FastAPI backend foundation, including workspace-scoped identity and authorization, provider adapters, advisory agents and skills, network research, a PostgreSQL-backed background job queue, workspace usage/cost accounting, and a fail-closed business-action approval API.
+
+It is not yet a complete commerce operating system or a production-ready deployment. Direct commerce-platform integrations and external business-action executors are not implemented. The API's live provider behavior depends on operator-managed credentials, provider access, quotas, and network configuration; CI tests use mocked upstream calls and do not prove live deployment readiness.
+
+Before using a deployment with real commerce accounts or customer/payment data, complete a deployment-specific threat model and security review, verify secrets and network boundaries, exercise backup restoration and recovery, and establish monitoring, alerting, load/failure testing, and incident response. Do not treat a passing CI run as a substitute for those release gates.
