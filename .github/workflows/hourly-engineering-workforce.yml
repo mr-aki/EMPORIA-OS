@@ -1,0 +1,73 @@
+name: Hourly Engineering Workforce
+
+on:
+  schedule:
+    # Run 17 minutes past each hour to avoid the busiest top-of-hour window.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hourly-engineering-workforce-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    name: ${{ matrix.worker }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      # GitHub Free permits up to 20 concurrent standard hosted jobs.
+      # Remaining workers queue automatically; no paid runner is required.
+      max-parallel: 20
+      matrix:
+        worker:
+          - pytest-actions
+          - pytest-api
+          - pytest-auth-security
+          - pytest-brave-search
+          - pytest-concurrency
+          - pytest-frankfurter
+          - pytest-idempotency
+          - pytest-job-api
+          - pytest-job-queue
+          - pytest-migrations
+          - pytest-output-budgets
+          - pytest-providers
+          - pytest-rate-limits
+          - pytest-skill-evaluation
+          - pytest-skill-prompt-security
+          - pytest-skills
+          - pytest-usage
+          - ruff
+          - compile
+          - migration-upgrade
+          - openapi-contract
+          - dependency-integrity
+          - docs-links
+          - package-wheel
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      - name: Install API and development dependencies
+        working-directory: apps/api
+        run: python -m pip install -e ".[dev]"
+
+      - name: Execute worker and publish its evidence
+        run: python scripts/engineering_workers.py --worker "${{ matrix.worker }}"
