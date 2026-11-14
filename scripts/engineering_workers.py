@@ -38,7 +38,7 @@ WORKERS: dict[str, str] = {
     "openapi-contract": "OpenAPI generation and operation-ID uniqueness",
     "dependency-integrity": "Installed Python dependency consistency",
     "docs-links": "Repository-local Markdown link integrity",
-    "package-wheel": "Build the API wheel without resolving new dependencies",
+    "package-wheel": "Build the API wheel in an isolated build environment",
 }
 
 
@@ -191,7 +191,7 @@ def run_worker(worker: str) -> int:
                 worker, description,
                 [
                     sys.executable, "-m", "pip", "wheel",
-                    "--no-deps", "--no-build-isolation",
+                    "--no-deps",
                     "--wheel-dir", temp_dir, ".",
                 ],
             )
