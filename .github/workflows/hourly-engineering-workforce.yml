@@ -5,6 +5,8 @@ on:
     # Run 17 minutes past each hour to avoid the busiest top-of-hour window.
     - cron: "17 * * * *"
   workflow_dispatch:
+  push:
+    branches: [automation/hourly-engineering-workforce]
   pull_request:
     branches: [main]
 
