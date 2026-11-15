@@ -37,6 +37,79 @@ class VentureRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sku: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=5000)
+    unit_price: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    currency: str = Field(default="USD", pattern=r"^[A-Za-z]{3}$")
+
+    @field_validator("sku", mode="before")
+    @classmethod
+    def normalize_sku(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def normalize_currency(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+
+class ProductUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sku: str | None = Field(default=None, min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    unit_price: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=4)
+    currency: str | None = Field(default=None, pattern=r"^[A-Za-z]{3}$")
+    status: Literal["draft", "active", "archived"] | None = None
+
+    @field_validator("sku", mode="before")
+    @classmethod
+    def normalize_sku(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def normalize_currency(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def require_non_null_changes(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one product field must be supplied")
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Product fields cannot be set to null")
+        return self
+
+
+class ProductRead(BaseModel):
+    id: str
+    sku: str
+    name: str
+    description: str
+    unit_price: Decimal
+    currency: str
+    status: Literal["draft", "active", "archived"]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AuditRead(BaseModel):
     id: str
     actor: str
