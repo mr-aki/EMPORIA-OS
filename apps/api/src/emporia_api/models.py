@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -73,6 +74,33 @@ class Venture(Base):
     status: Mapped[str] = mapped_column(String(30), default="planning", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class Product(Base):
+    """Workspace-owned catalogue product with a normalized, workspace-unique SKU."""
+
+    __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "sku", name="uq_products_workspace_sku"),
+        Index("ix_products_workspace_created_at", "workspace_id", "created_at"),
+        CheckConstraint("unit_price > 0", name="ck_products_unit_price_positive"),
+        CheckConstraint("status IN ('draft', 'active', 'archived')", name="ck_products_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    sku: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", server_default="", nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="draft", server_default="draft", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
 
 
 class AuditEvent(Base):

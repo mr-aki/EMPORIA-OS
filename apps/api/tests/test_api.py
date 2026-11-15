@@ -39,9 +39,135 @@ def test_venture_crud_and_audit(client, auth_headers):
     assert client.get("/api/v1/ventures", headers=auth_headers).json() == []
 
 
+
+def _product_payload(**overrides):
+    payload = {
+        "sku": "sku-001",
+        "name": "Everyday Storage Basket",
+        "description": "Stackable woven storage basket",
+        "unit_price": "19.9900",
+        "currency": "usd",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_product_catalog_crud_search_and_workspace_isolation(client, auth_headers):
+    created = client.post("/api/v1/products", headers=auth_headers, json=_product_payload())
+    assert created.status_code == 201, created.text
+    product = created.json()
+    assert product["sku"] == "SKU-001"
+    assert product["currency"] == "USD"
+    assert product["status"] == "draft"
+    assert Decimal(product["unit_price"]) == Decimal("19.9900")
+
+    unrelated = client.post(
+        "/api/v1/products",
+        headers=auth_headers,
+        json=_product_payload(sku="SKU-002", name="Glass Canister"),
+    )
+    assert unrelated.status_code == 201, unrelated.text
+
+    listed = client.get("/api/v1/products?status=draft&q=storage", headers=auth_headers)
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [product["id"]]
+
+    other = client.post("/api/v1/auth/register", json={
+        "email": "catalog-other-owner@example.com",
+        "password": "AnotherStrongPassword!2026",
+        "display_name": "Other Catalogue Owner",
+        "workspace_name": "Other Catalogue Workspace",
+    })
+    assert other.status_code == 201
+    other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+    assert client.get("/api/v1/products", headers=other_headers).json() == []
+    assert client.get(f"/api/v1/products/{product['id']}", headers=other_headers).status_code == 404
+
+    updated = client.patch(
+        f"/api/v1/products/{product['id']}", headers=auth_headers,
+        json={"sku": "sku-001-v2", "unit_price": "22.5000", "status": "active"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["sku"] == "SKU-001-V2"
+    assert Decimal(updated.json()["unit_price"]) == Decimal("22.5000")
+    assert updated.json()["status"] == "active"
+    filtered = client.get("/api/v1/products?status=active&q=SKU-001-V2", headers=auth_headers)
+    assert [item["id"] for item in filtered.json()] == [product["id"]]
+
+    events = client.get("/api/v1/audit-events", headers=auth_headers).json()
+    assert any(event["action"] == "product.created" and event["resource_id"] == product["id"] for event in events)
+    assert any(event["action"] == "product.updated" and event["resource_id"] == product["id"] for event in events)
+
+
+def test_product_sku_is_unique_within_workspace_and_normalized(client, auth_headers):
+    first = client.post("/api/v1/products", headers=auth_headers, json=_product_payload(sku=" shared-01 "))
+    duplicate = client.post("/api/v1/products", headers=auth_headers, json=_product_payload(sku="SHARED-01"))
+    assert first.status_code == 201, first.text
+    assert first.json()["sku"] == "SHARED-01"
+    assert duplicate.status_code == 409
+
+    other = client.post("/api/v1/auth/register", json={
+        "email": "catalog-second-owner@example.com",
+        "password": "AnotherStrongPassword!2026",
+        "display_name": "Second Catalogue Owner",
+        "workspace_name": "Second Catalogue Workspace",
+    })
+    assert other.status_code == 201
+    other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+    same_sku = client.post("/api/v1/products", headers=other_headers, json=_product_payload(sku="shared-01"))
+    assert same_sku.status_code == 201
+
+
+def test_product_catalog_validation_and_viewer_write_denial(client, auth_headers):
+    assert client.post("/api/v1/products", headers=auth_headers, json=_product_payload(unit_price="0")).status_code == 422
+    assert client.post("/api/v1/products", headers=auth_headers, json=_product_payload(currency="US")).status_code == 422
+    assert client.post("/api/v1/products", headers=auth_headers, json=_product_payload(unreviewed_store_id="store-1")).status_code == 422
+
+    product = client.post("/api/v1/products", headers=auth_headers, json=_product_payload())
+    assert product.status_code == 201
+    empty_patch = client.patch(
+        f"/api/v1/products/{product.json()['id']}",
+        headers=auth_headers,
+        json={},
+    )
+    null_patch = client.patch(
+        f"/api/v1/products/{product.json()['id']}",
+        headers=auth_headers,
+        json={"name": None},
+    )
+    assert empty_patch.status_code == 422
+    assert null_patch.status_code == 422
+
+    member = client.post("/api/v1/auth/register", json={
+        "email": "catalog-viewer@example.com",
+        "password": "AnotherStrongPassword!2026",
+        "display_name": "Catalogue Viewer",
+        "workspace_name": "Temporary Viewer Workspace",
+    })
+    assert member.status_code == 201
+    added = client.post(
+        "/api/v1/workspaces/members", headers=auth_headers,
+        json={"email": "catalog-viewer@example.com", "role": "viewer"},
+    )
+    assert added.status_code == 201, added.text
+    owner_profile = client.get("/api/v1/auth/me", headers=auth_headers).json()
+    viewer_login = client.post("/api/v1/auth/login", json={
+        "email": "catalog-viewer@example.com",
+        "password": "AnotherStrongPassword!2026",
+        "workspace_id": owner_profile["workspaces"][0]["id"],
+    })
+    assert viewer_login.status_code == 200
+    viewer_headers = {"Authorization": f"Bearer {viewer_login.json()['access_token']}"}
+    assert client.get("/api/v1/products", headers=viewer_headers).status_code == 200
+    assert client.post("/api/v1/products", headers=viewer_headers, json=_product_payload(sku="VIEWER-001")).status_code == 403
+    assert client.patch(f"/api/v1/products/{product.json()['id']}", headers=viewer_headers, json={"status": "active"}).status_code == 403
+
+
 def test_api_requires_auth(client):
     assert client.get("/api/v1/ventures").status_code == 401
     assert client.post("/api/v1/ventures", json={"name": "No auth"}).status_code == 401
+    assert client.get("/api/v1/products").status_code == 401
+    assert client.post("/api/v1/products", json=_product_payload()).status_code == 401
 
 
 def test_validation_rejects_empty_name(client, auth_headers):

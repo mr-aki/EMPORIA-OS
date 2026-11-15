@@ -28,11 +28,12 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "workspaces",
             "workspace_memberships",
             "skill_runs",
+            "products",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0011_workspace_model_costs"
+        assert revision == "0012_workspace_product_catalog"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -52,6 +53,15 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         assert "background_jobs" in inspector.get_table_names()
         assert "login_attempt_rate_limits" in inspector.get_table_names()
         assert "workspace_model_prices" in inspector.get_table_names()
+        assert "uq_products_workspace_sku" in {
+            item["name"] for item in inspector.get_unique_constraints("products")
+        }
+        assert "ix_products_workspace_created_at" in {
+            item["name"] for item in inspector.get_indexes("products")
+        }
+        assert {"sku", "name", "unit_price", "currency", "status"}.issubset(
+            {column["name"] for column in inspector.get_columns("products")}
+        )
         assert "uq_workspace_model_price_provider_model" in {
             item["name"]
             for item in inspector.get_unique_constraints("workspace_model_prices")
@@ -176,6 +186,7 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "workspaces" in inspector.get_table_names()
         assert "workspace_memberships" in inspector.get_table_names()
         assert "business_action_requests" in inspector.get_table_names()
+        assert "products" in inspector.get_table_names()
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
         }
