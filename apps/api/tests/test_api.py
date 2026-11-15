@@ -61,6 +61,13 @@ def test_product_catalog_crud_search_and_workspace_isolation(client, auth_header
     assert product["status"] == "draft"
     assert Decimal(product["unit_price"]) == Decimal("19.9900")
 
+    unrelated = client.post(
+        "/api/v1/products",
+        headers=auth_headers,
+        json=_product_payload(sku="SKU-002", name="Glass Canister"),
+    )
+    assert unrelated.status_code == 201, unrelated.text
+
     listed = client.get("/api/v1/products?status=draft&q=storage", headers=auth_headers)
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [product["id"]]
@@ -118,6 +125,19 @@ def test_product_catalog_validation_and_viewer_write_denial(client, auth_headers
 
     product = client.post("/api/v1/products", headers=auth_headers, json=_product_payload())
     assert product.status_code == 201
+    empty_patch = client.patch(
+        f"/api/v1/products/{product.json()['id']}",
+        headers=auth_headers,
+        json={},
+    )
+    null_patch = client.patch(
+        f"/api/v1/products/{product.json()['id']}",
+        headers=auth_headers,
+        json={"name": None},
+    )
+    assert empty_patch.status_code == 422
+    assert null_patch.status_code == 422
+
     member = client.post("/api/v1/auth/register", json={
         "email": "catalog-viewer@example.com",
         "password": "AnotherStrongPassword!2026",
@@ -146,6 +166,8 @@ def test_product_catalog_validation_and_viewer_write_denial(client, auth_headers
 def test_api_requires_auth(client):
     assert client.get("/api/v1/ventures").status_code == 401
     assert client.post("/api/v1/ventures", json={"name": "No auth"}).status_code == 401
+    assert client.get("/api/v1/products").status_code == 401
+    assert client.post("/api/v1/products", json=_product_payload()).status_code == 401
 
 
 def test_validation_rejects_empty_name(client, auth_headers):

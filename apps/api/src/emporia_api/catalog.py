@@ -46,15 +46,15 @@ def list_products(
     session: SessionDep,
     actor: AuthDep,
     product_status: Annotated[ProductStatus | None, Query(alias="status")] = None,
-    query: Annotated[str | None, Query(max_length=120)] = None,
+    q: Annotated[str | None, Query(max_length=120)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ):
     """List only the current workspace's products, with bounded filters."""
     statement = select(Product).where(Product.workspace_id == actor.workspace_id)
     if product_status is not None:
         statement = statement.where(Product.status == product_status)
-    if query and query.strip():
-        pattern = f"%{query.strip()}%"
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
         statement = statement.where(or_(Product.sku.ilike(pattern), Product.name.ilike(pattern)))
     statement = statement.order_by(Product.created_at.desc(), Product.sku.asc()).limit(limit)
     return list(session.scalars(statement))

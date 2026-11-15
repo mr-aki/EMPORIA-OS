@@ -8,7 +8,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from emporia_api.actions.api import router as actions_router
-from emporia_api.catalog import router as catalog_router
 from emporia_api.agents.registry import get_agent, list_agents
 from emporia_api.auth import (
     Principal,
@@ -19,6 +18,7 @@ from emporia_api.auth import (
     require_write_access,
     verify_password,
 )
+from emporia_api.catalog import router as catalog_router
 from emporia_api.concurrency import (
     ConcurrentExecutionLimitExceeded,
     recover_expired_execution_leases,

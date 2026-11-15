@@ -152,7 +152,7 @@ Passwords require at least 12 characters and are hashed with Argon2 through pwdl
 - DELETE /api/v1/ventures/{id}
 - GET /api/v1/audit-events
 
-Venture, product, and audit records are filtered to the workspace derived from the authenticated principal. Product SKUs are normalized to uppercase and unique within each workspace; prices use four-decimal Decimal storage, and create/update mutations append audit events in the same database transaction. Products move through draft, active, and archived states; the first slice intentionally has no destructive product-delete endpoint.
+Venture, product, and audit records are filtered to the workspace derived from the authenticated principal. Product SKUs are normalized to uppercase and unique within each workspace; list filtering accepts an optional `status`, `q` search term (SKU or name), and a bounded `limit`; prices use four-decimal Decimal storage, and create/update mutations append audit events in the same database transaction. Products move through draft, active, and archived states; the first slice intentionally has no destructive product-delete endpoint.
 
 ### AI provider gateway
 
