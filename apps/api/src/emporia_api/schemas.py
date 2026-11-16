@@ -110,6 +110,58 @@ class ProductRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+
+class InventoryMovementCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    movement_type: Literal["receipt", "sale", "return", "damage", "adjustment"]
+    quantity_delta: int = Field(
+        strict=True, ne=0, ge=-1_000_000_000, le=1_000_000_000
+    )
+    reason: str = Field(min_length=1, max_length=200)
+    reference: str | None = Field(default=None, max_length=120)
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+
+    @field_validator("reason", "reference", mode="before")
+    @classmethod
+    def normalize_inventory_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_movement_direction(self):
+        if self.movement_type in {"receipt", "return"} and self.quantity_delta < 0:
+            raise ValueError("Receipts and returns must increase stock")
+        if self.movement_type in {"sale", "damage"} and self.quantity_delta > 0:
+            raise ValueError("Sales and damage must decrease stock")
+        return self
+
+
+class InventoryMovementRead(BaseModel):
+    id: str
+    product_id: str
+    movement_type: Literal["receipt", "sale", "return", "damage", "adjustment"]
+    quantity_delta: int
+    quantity_after: int
+    reason: str
+    reference: str | None
+    idempotency_key: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryBalanceRead(BaseModel):
+    product_id: str
+    sku: str
+    quantity_on_hand: int
+    movement_count: int
+    last_movement_at: datetime | None
+
+
 class AuditRead(BaseModel):
     id: str
     actor: str

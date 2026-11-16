@@ -146,13 +146,16 @@ Passwords require at least 12 characters and are hashed with Argon2 through pwdl
 - GET /api/v1/products
 - GET /api/v1/products/{id}
 - PATCH /api/v1/products/{id}
+- GET /api/v1/products/{id}/inventory
+- GET /api/v1/products/{id}/inventory/movements
+- POST /api/v1/products/{id}/inventory/movements
 - GET /api/v1/ventures
 - GET /api/v1/ventures/{id}
 - PATCH /api/v1/ventures/{id}
 - DELETE /api/v1/ventures/{id}
 - GET /api/v1/audit-events
 
-Venture, product, and audit records are filtered to the workspace derived from the authenticated principal. Product SKUs are normalized to uppercase and unique within each workspace; list filtering accepts an optional `status`, `q` search term (SKU or name), and a bounded `limit`; prices use four-decimal Decimal storage, and create/update mutations append audit events in the same database transaction. Products move through draft, active, and archived states; the first slice intentionally has no destructive product-delete endpoint.
+Venture, product, and audit records are filtered to the workspace derived from the authenticated principal. Product SKUs are normalized to uppercase and unique within each workspace; list filtering accepts an optional `status`, `q` search term (SKU or name), and a bounded `limit`; prices use four-decimal Decimal storage, and create/update mutations append audit events in the same database transaction. Products move through draft, active, and archived states; the first slice intentionally has no destructive product-delete endpoint. Inventory is an append-only, workspace-wide integer-unit ledger: receipts and returns add stock, sales and damage remove stock, and corrections use an explicit adjustment. Each write requires a workspace-unique idempotency key, records the resulting balance and an audit event in one transaction, and rejects negative stock. Warehouse/bin allocation, fractional units, and external store synchronization are not included.
 
 ### AI provider gateway
 

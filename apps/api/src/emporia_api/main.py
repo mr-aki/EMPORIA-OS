@@ -19,6 +19,7 @@ from emporia_api.auth import (
     verify_password,
 )
 from emporia_api.catalog import router as catalog_router
+from emporia_api.inventory import router as inventory_router
 from emporia_api.concurrency import (
     ConcurrentExecutionLimitExceeded,
     recover_expired_execution_leases,
@@ -112,6 +113,7 @@ app = FastAPI(title=settings.app_name, version="0.1.0")
 app.include_router(usage_router)
 app.include_router(actions_router)
 app.include_router(catalog_router)
+app.include_router(inventory_router)
 SessionDep = Annotated[Session, Depends(get_session)]
 AuthDep = Annotated[Principal, Depends(get_current_principal)]
 
