@@ -116,7 +116,7 @@ class InventoryMovementCreate(BaseModel):
 
     movement_type: Literal["receipt", "sale", "return", "damage", "adjustment"]
     quantity_delta: int = Field(
-        strict=True, ne=0, ge=-1_000_000_000, le=1_000_000_000
+        strict=True, ge=-1_000_000_000, le=1_000_000_000
     )
     reason: str = Field(min_length=1, max_length=200)
     reference: str | None = Field(default=None, max_length=120)
@@ -125,6 +125,13 @@ class InventoryMovementCreate(BaseModel):
         max_length=128,
         pattern=r"^[A-Za-z0-9._:-]+$",
     )
+
+    @field_validator("quantity_delta")
+    @classmethod
+    def require_nonzero_quantity(cls, value: int) -> int:
+        if value == 0:
+            raise ValueError("Inventory movements must change stock")
+        return value
 
     @field_validator("reason", "reference", mode="before")
     @classmethod
