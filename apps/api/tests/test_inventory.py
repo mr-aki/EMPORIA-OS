@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 
 def _create_product(client, auth_headers, sku="STOCK-001"):
     response = client.post(

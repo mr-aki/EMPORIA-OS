@@ -19,7 +19,6 @@ from emporia_api.auth import (
     verify_password,
 )
 from emporia_api.catalog import router as catalog_router
-from emporia_api.inventory import router as inventory_router
 from emporia_api.concurrency import (
     ConcurrentExecutionLimitExceeded,
     recover_expired_execution_leases,
@@ -38,6 +37,7 @@ from emporia_api.idempotency import (
     find_replay,
     fingerprint_request,
 )
+from emporia_api.inventory import router as inventory_router
 from emporia_api.login_rate_limits import (
     LoginRateLimitExceeded,
     clear_login_attempts,
