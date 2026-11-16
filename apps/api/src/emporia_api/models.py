@@ -103,6 +103,53 @@ class Product(Base):
     )
 
 
+
+class InventoryMovement(Base):
+    """Immutable workspace-scoped stock movement; current stock is the sum of deltas."""
+
+    __tablename__ = "inventory_movements"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "idempotency_key",
+            name="uq_inventory_movements_workspace_idempotency",
+        ),
+        Index(
+            "ix_inventory_movements_workspace_product_created_at",
+            "workspace_id", "product_id", "created_at",
+        ),
+        CheckConstraint("quantity_delta <> 0", name="ck_inventory_movements_nonzero_delta"),
+        CheckConstraint("quantity_after >= 0", name="ck_inventory_movements_nonnegative_balance"),
+        CheckConstraint(
+            "movement_type IN ('receipt', 'sale', 'return', 'damage', 'adjustment')",
+            name="ck_inventory_movements_type",
+        ),
+        CheckConstraint(
+            "((movement_type IN ('receipt', 'return') AND quantity_delta > 0) "
+            "OR (movement_type IN ('sale', 'damage') AND quantity_delta < 0) "
+            "OR (movement_type = 'adjustment' AND quantity_delta <> 0))",
+            name="ck_inventory_movements_direction",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    product_id: Mapped[str] = mapped_column(
+        ForeignKey(
+            "products.id",
+            name="fk_inventory_movements_product_id_products",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    movement_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(200), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

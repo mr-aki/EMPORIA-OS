@@ -29,11 +29,12 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "workspace_memberships",
             "skill_runs",
             "products",
+            "inventory_movements",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0012_workspace_product_catalog"
+        assert revision == "0013_product_inventory_ledger"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -55,6 +56,13 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         assert "workspace_model_prices" in inspector.get_table_names()
         assert "uq_products_workspace_sku" in {
             item["name"] for item in inspector.get_unique_constraints("products")
+        }
+        assert "uq_inventory_movements_workspace_idempotency" in {
+            item["name"]
+            for item in inspector.get_unique_constraints("inventory_movements")
+        }
+        assert "ix_inventory_movements_workspace_product_created_at" in {
+            item["name"] for item in inspector.get_indexes("inventory_movements")
         }
         assert "ix_products_workspace_created_at" in {
             item["name"] for item in inspector.get_indexes("products")
@@ -187,6 +195,7 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "workspace_memberships" in inspector.get_table_names()
         assert "business_action_requests" in inspector.get_table_names()
         assert "products" in inspector.get_table_names()
+        assert "inventory_movements" in inspector.get_table_names()
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
         }
