@@ -1,3 +1,10 @@
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from emporia_api.database import SessionLocal
+from emporia_api.models import InventoryMovement
+
+
 
 def _create_product(client, auth_headers, sku="STOCK-001"):
     response = client.post(
@@ -183,3 +190,24 @@ def test_inventory_is_workspace_scoped_and_viewers_are_read_only(client, auth_he
         json=_movement("receipt", 4, "viewer-stock-001"),
     )
     assert denied.status_code == 403
+
+
+
+def test_inventory_database_rejects_product_workspace_mismatch(client, auth_headers):
+    product = _create_product(client, auth_headers)
+
+    with SessionLocal() as session:
+        session.add(
+            InventoryMovement(
+                workspace_id="different-workspace",
+                product_id=product["id"],
+                movement_type="receipt",
+                quantity_delta=1,
+                quantity_after=1,
+                reason="Cross-workspace integrity regression",
+                idempotency_key="cross-workspace-001",
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
