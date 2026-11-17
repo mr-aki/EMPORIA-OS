@@ -5,7 +5,6 @@ from emporia_api.database import SessionLocal
 from emporia_api.models import InventoryMovement
 
 
-
 def _create_product(client, auth_headers, sku="STOCK-001"):
     response = client.post(
         "/api/v1/products",
