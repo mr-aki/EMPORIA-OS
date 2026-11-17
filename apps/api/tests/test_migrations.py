@@ -34,7 +34,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0013_product_inventory_ledger"
+        assert revision == "0014_inventory_product_workspace_fk"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -57,6 +57,17 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         assert "uq_products_workspace_sku" in {
             item["name"] for item in inspector.get_unique_constraints("products")
         }
+        assert "uq_products_id_workspace" in {
+            item["name"] for item in inspector.get_indexes("products")
+        }
+        inventory_foreign_keys = inspector.get_foreign_keys("inventory_movements")
+        assert any(
+            item["name"] == "fk_inventory_movements_product_workspace"
+            and item["constrained_columns"] == ["product_id", "workspace_id"]
+            and item["referred_columns"] == ["id", "workspace_id"]
+            and item["referred_table"] == "products"
+            for item in inventory_foreign_keys
+        )
         assert "uq_inventory_movements_workspace_idempotency" in {
             item["name"]
             for item in inspector.get_unique_constraints("inventory_movements")

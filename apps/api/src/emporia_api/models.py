@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -82,6 +83,7 @@ class Product(Base):
     __tablename__ = "products"
     __table_args__ = (
         UniqueConstraint("workspace_id", "sku", name="uq_products_workspace_sku"),
+        Index("uq_products_id_workspace", "id", "workspace_id", unique=True),
         Index("ix_products_workspace_created_at", "workspace_id", "created_at"),
         CheckConstraint("unit_price > 0", name="ck_products_unit_price_positive"),
         CheckConstraint("status IN ('draft', 'active', 'archived')", name="ck_products_status"),
@@ -109,6 +111,12 @@ class InventoryMovement(Base):
 
     __tablename__ = "inventory_movements"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["product_id", "workspace_id"],
+            ["products.id", "products.workspace_id"],
+            name="fk_inventory_movements_product_workspace",
+            ondelete="RESTRICT",
+        ),
         UniqueConstraint(
             "workspace_id", "idempotency_key",
             name="uq_inventory_movements_workspace_idempotency",
@@ -133,14 +141,7 @@ class InventoryMovement(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
-    product_id: Mapped[str] = mapped_column(
-        ForeignKey(
-            "products.id",
-            name="fk_inventory_movements_product_id_products",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
-    )
+    product_id: Mapped[str] = mapped_column(String(36), nullable=False)
     movement_type: Mapped[str] = mapped_column(String(20), nullable=False)
     quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_after: Mapped[int] = mapped_column(Integer, nullable=False)
