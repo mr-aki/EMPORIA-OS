@@ -34,7 +34,7 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0014_inventory_product_workspace_fk"
+        assert revision == "0014_inventory_ws_fk"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }

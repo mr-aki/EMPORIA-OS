@@ -3,7 +3,7 @@
 from alembic import op
 
 
-revision = "0014_inventory_product_workspace_fk"
+revision = "0014_inventory_ws_fk"
 down_revision = "0013_product_inventory_ledger"
 branch_labels = None
 depends_on = None

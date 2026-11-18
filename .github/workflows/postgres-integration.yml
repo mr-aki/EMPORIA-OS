@@ -69,7 +69,7 @@ jobs:
           try:
               with engine.connect() as connection:
                   revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-              assert revision == "0014_inventory_product_workspace_fk", revision
+              assert revision == "0014_inventory_ws_fk", revision
 
               foreign_keys = inspect(engine).get_foreign_keys("inventory_movements")
               assert any(
