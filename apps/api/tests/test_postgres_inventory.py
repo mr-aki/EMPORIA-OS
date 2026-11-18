@@ -1,14 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
 
 from emporia_api.database import SessionLocal, engine
 from emporia_api.main import app
 from emporia_api.models import InventoryMovement
-
 
 pytestmark = pytest.mark.skipif(
     engine.dialect.name != "postgresql",
