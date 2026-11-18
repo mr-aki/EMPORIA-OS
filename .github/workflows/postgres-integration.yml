@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - test/postgres-inventory-integration-20261118
-  pull_request:
-    branches:
-      - security/inventory-product-workspace-fk-20261117
 
 permissions:
   contents: read
