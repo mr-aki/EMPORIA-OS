@@ -1,8 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
-import pytest
 from fastapi.testclient import TestClient
+import pytest
 from sqlalchemy import event, func, select
 
 from emporia_api.database import SessionLocal, engine
