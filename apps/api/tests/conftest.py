@@ -1,12 +1,12 @@
 import os
 import tempfile
 
-os.environ["EMPORIA_DATABASE_URL"] = f"sqlite:///{tempfile.mktemp(suffix='.db')}"
-os.environ["EMPORIA_API_TOKEN"] = "test-secret"
-os.environ["EMPORIA_JWT_SECRET"] = "unit-test-jwt-secret-with-at-least-32-chars"
-os.environ["EMPORIA_ALLOW_REGISTRATION"] = "true"
-os.environ["EMPORIA_WORKSPACE_ID"] = "test-workspace"
-os.environ["EMPORIA_ENVIRONMENT"] = "test"
+os.environ.setdefault("EMPORIA_DATABASE_URL", f"sqlite:///{tempfile.mktemp(suffix='.db')}")
+os.environ.setdefault("EMPORIA_API_TOKEN", "test-secret")
+os.environ.setdefault("EMPORIA_JWT_SECRET", "unit-test-jwt-secret-with-at-least-32-chars")
+os.environ.setdefault("EMPORIA_ALLOW_REGISTRATION", "true")
+os.environ.setdefault("EMPORIA_WORKSPACE_ID", "test-workspace")
+os.environ.setdefault("EMPORIA_ENVIRONMENT", "test")
 
 import pytest
 from fastapi.testclient import TestClient
