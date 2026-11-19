@@ -489,3 +489,20 @@ The API includes a workspace-scoped approval workflow for allow-listed commerce 
 The allow-list currently covers product catalogue updates, inventory adjustments, campaign publication, and order refunds. Proposal inputs have strict field validation, a 16 KB payload ceiling, recursive secret-field rejection, workspace-unique idempotency, and audit events. Owner-only team onboarding can add an already registered account to the current workspace as an admin, operator, or viewer; it is not an email invitation flow.
 
 All current catalogue entries report `executor_available=false`. Approving a request does not modify any live store, inventory, campaign, order, payment method, or customer record. A future external adapter must be separately reviewed for scopes, idempotency, preconditions, budget limits, dry-run behavior, verification, observability, and compensation before it can be enabled.
+
+
+## Suppliers and procurement
+
+The procurement API keeps supplier and purchase-order records inside the authenticated workspace. Suppliers support create, bounded list/search, detail, and reversible archival. Purchase orders are created as drafts with one line per product, explicitly placed, and received in partial or final batches.
+
+- POST /api/v1/suppliers
+- GET /api/v1/suppliers?status=active&q=vendor&limit=50
+- GET /api/v1/suppliers/{id}
+- PATCH /api/v1/suppliers/{id}
+- POST /api/v1/purchase-orders
+- GET /api/v1/purchase-orders
+- GET /api/v1/purchase-orders/{id}
+- POST /api/v1/purchase-orders/{id}/order
+- POST /api/v1/purchase-orders/{id}/receipts
+
+A receipt requires an idempotency key and positive quantities for existing purchase-order lines. Posting a receipt, increasing received quantities, writing inventory movements, changing the purchase-order status, and appending audit events happen in one database transaction. Replayed identical requests return the original receipt; reusing a key with a different payload returns HTTP 409. Quantities cannot exceed the outstanding ordered amount. External supplier messaging, payments, freight, multi-warehouse allocation, and supplier portal access are not included.

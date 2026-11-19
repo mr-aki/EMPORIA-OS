@@ -151,6 +151,187 @@ class InventoryMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+
+
+class Supplier(Base):
+    """Workspace-owned supplier contact and lifecycle record."""
+
+    __tablename__ = "suppliers"
+    __table_args__ = (
+        UniqueConstraint("id", "workspace_id", name="uq_suppliers_id_workspace"),
+        UniqueConstraint("workspace_id", "code", name="uq_suppliers_workspace_code"),
+        Index("ix_suppliers_workspace_created_at", "workspace_id", "created_at"),
+        CheckConstraint("status IN ('active', 'archived')", name="ck_suppliers_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    contact_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="active", server_default="active", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
+class PurchaseOrder(Base):
+    """Workspace-scoped supplier order with an explicit receiving lifecycle."""
+
+    __tablename__ = "purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("id", "workspace_id", name="uq_purchase_orders_id_workspace"),
+        UniqueConstraint("workspace_id", "order_number", name="uq_purchase_orders_workspace_number"),
+        ForeignKeyConstraint(
+            ["supplier_id", "workspace_id"],
+            ["suppliers.id", "suppliers.workspace_id"],
+            name="fk_purchase_orders_supplier_workspace",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_purchase_orders_workspace_created_at", "workspace_id", "created_at"),
+        CheckConstraint(
+            "status IN ('draft', 'ordered', 'partially_received', 'received', 'cancelled')",
+            name="ck_purchase_orders_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    supplier_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    order_number: Mapped[str] = mapped_column(String(80), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), default="draft", server_default="draft", nullable=False
+    )
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
+class PurchaseOrderLine(Base):
+    """Ordered quantity and cost with a mutable received counter."""
+
+    __tablename__ = "purchase_order_lines"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["purchase_order_id", "workspace_id"],
+            ["purchase_orders.id", "purchase_orders.workspace_id"],
+            name="fk_purchase_order_lines_order_workspace",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["product_id", "workspace_id"],
+            ["products.id", "products.workspace_id"],
+            name="fk_purchase_order_lines_product_workspace",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "purchase_order_id", "product_id",
+            name="uq_purchase_order_lines_order_product",
+        ),
+        Index(
+            "ix_purchase_order_lines_workspace_order",
+            "workspace_id", "purchase_order_id",
+        ),
+        CheckConstraint("quantity_ordered > 0", name="ck_purchase_order_lines_ordered_positive"),
+        CheckConstraint(
+            "quantity_received >= 0 AND quantity_received <= quantity_ordered",
+            name="ck_purchase_order_lines_received_range",
+        ),
+        CheckConstraint("unit_cost >= 0", name="ck_purchase_order_lines_unit_cost_nonnegative"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    purchase_order_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    quantity_ordered: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_received: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PurchaseOrderReceipt(Base):
+    """Idempotent receipt envelope for one purchase-order receiving operation."""
+
+    __tablename__ = "purchase_order_receipts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["purchase_order_id", "workspace_id"],
+            ["purchase_orders.id", "purchase_orders.workspace_id"],
+            name="fk_purchase_order_receipts_order_workspace",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "workspace_id", "idempotency_key",
+            name="uq_purchase_order_receipts_workspace_idempotency",
+        ),
+        UniqueConstraint("id", "workspace_id", name="uq_purchase_order_receipts_id_workspace"),
+        Index(
+            "ix_purchase_order_receipts_workspace_order_created",
+            "workspace_id", "purchase_order_id", "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    purchase_order_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PurchaseOrderReceiptLine(Base):
+    """Received order line linked to its immutable inventory movement."""
+
+    __tablename__ = "purchase_order_receipt_lines"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["receipt_id", "workspace_id"],
+            ["purchase_order_receipts.id", "purchase_order_receipts.workspace_id"],
+            name="fk_purchase_order_receipt_lines_receipt_workspace",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["purchase_order_line_id", "workspace_id"],
+            ["purchase_order_lines.id", "purchase_order_lines.workspace_id"],
+            name="fk_purchase_order_receipt_lines_order_line_workspace",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["inventory_movement_id"],
+            ["inventory_movements.id"],
+            name="fk_purchase_order_receipt_lines_inventory_movement",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "receipt_id", "purchase_order_line_id",
+            name="uq_purchase_order_receipt_lines_receipt_line",
+        ),
+        UniqueConstraint(
+            "inventory_movement_id",
+            name="uq_purchase_order_receipt_lines_inventory_movement",
+        ),
+        CheckConstraint("quantity_received > 0", name="ck_purchase_order_receipt_lines_positive"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    receipt_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    purchase_order_line_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    inventory_movement_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    quantity_received: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

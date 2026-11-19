@@ -30,11 +30,16 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "skill_runs",
             "products",
             "inventory_movements",
+            "suppliers",
+            "purchase_orders",
+            "purchase_order_lines",
+            "purchase_order_receipts",
+            "purchase_order_receipt_lines",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0014_inventory_ws_fk"
+        assert revision == "0015_procurement"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -77,6 +82,29 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }
         assert "ix_products_workspace_created_at" in {
             item["name"] for item in inspector.get_indexes("products")
+        }
+        assert "uq_suppliers_workspace_code" in {
+            item["name"] for item in inspector.get_unique_constraints("suppliers")
+        }
+        assert "uq_purchase_orders_workspace_number" in {
+            item["name"] for item in inspector.get_unique_constraints("purchase_orders")
+        }
+        assert "uq_purchase_order_receipts_workspace_idempotency" in {
+            item["name"]
+            for item in inspector.get_unique_constraints("purchase_order_receipts")
+        }
+        assert "fk_purchase_orders_supplier_workspace" in {
+            item["name"] for item in inspector.get_foreign_keys("purchase_orders")
+        }
+        assert "fk_purchase_order_lines_product_workspace" in {
+            item["name"] for item in inspector.get_foreign_keys("purchase_order_lines")
+        }
+        assert "fk_purchase_order_lines_order_workspace" in {
+            item["name"] for item in inspector.get_foreign_keys("purchase_order_lines")
+        }
+        assert "fk_purchase_order_receipt_lines_receipt_workspace" in {
+            item["name"]
+            for item in inspector.get_foreign_keys("purchase_order_receipt_lines")
         }
         assert {"sku", "name", "unit_price", "currency", "status"}.issubset(
             {column["name"] for column in inspector.get_columns("products")}
