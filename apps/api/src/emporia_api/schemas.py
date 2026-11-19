@@ -169,6 +169,178 @@ class InventoryBalanceRead(BaseModel):
     last_movement_at: datetime | None
 
 
+
+class SupplierCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    name: str = Field(min_length=1, max_length=160)
+    contact_email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=60)
+    website: str | None = Field(default=None, max_length=500)
+    notes: str = Field(default="", max_length=4000)
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_code(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("name", "phone", "website", "notes", mode="before")
+    @classmethod
+    def normalize_supplier_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+
+class SupplierUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    contact_email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=60)
+    website: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=4000)
+    status: Literal["active", "archived"] | None = None
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_code(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("name", "phone", "website", "notes", mode="before")
+    @classmethod
+    def normalize_supplier_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def require_valid_changes(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one supplier field must be supplied")
+        if any(
+            getattr(self, field) is None
+            for field in self.model_fields_set
+            if field in {"name", "status"}
+        ):
+            raise ValueError("Supplier name and status cannot be null")
+        return self
+
+
+class SupplierRead(BaseModel):
+    id: str
+    code: str | None
+    name: str
+    contact_email: str | None
+    phone: str | None
+    website: str | None
+    notes: str
+    status: Literal["active", "archived"]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderLineCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: str = Field(min_length=1, max_length=36)
+    quantity_ordered: int = Field(strict=True, gt=0, le=1_000_000_000)
+    unit_cost: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+
+
+class PurchaseOrderCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order_number: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    supplier_id: str = Field(min_length=1, max_length=36)
+    currency: str = Field(default="USD", pattern=r"^[A-Za-z]{3}$")
+    notes: str = Field(default="", max_length=4000)
+    lines: list[PurchaseOrderLineCreate] = Field(min_length=1, max_length=100)
+
+    @field_validator("order_number")
+    @classmethod
+    def normalize_order_number(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @field_validator("currency")
+    @classmethod
+    def normalize_order_currency(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @field_validator("notes")
+    @classmethod
+    def normalize_order_notes(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def require_unique_products(self):
+        product_ids = [line.product_id for line in self.lines]
+        if len(product_ids) != len(set(product_ids)):
+            raise ValueError("A purchase order may contain each product only once")
+        return self
+
+
+class PurchaseOrderReceiptLineCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    purchase_order_line_id: str = Field(min_length=1, max_length=36)
+    quantity_received: int = Field(strict=True, gt=0, le=1_000_000_000)
+
+
+class PurchaseOrderReceiptCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(
+        min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
+    )
+    lines: list[PurchaseOrderReceiptLineCreate] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def require_unique_lines(self):
+        line_ids = [line.purchase_order_line_id for line in self.lines]
+        if len(line_ids) != len(set(line_ids)):
+            raise ValueError("A receipt may contain each purchase-order line only once")
+        return self
+
+
+class PurchaseOrderLineRead(BaseModel):
+    id: str
+    product_id: str
+    quantity_ordered: int
+    quantity_received: int
+    unit_cost: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderRead(BaseModel):
+    id: str
+    order_number: str
+    supplier_id: str
+    currency: str
+    status: Literal["draft", "ordered", "partially_received", "received", "cancelled"]
+    notes: str
+    created_at: datetime
+    updated_at: datetime
+    lines: list[PurchaseOrderLineRead]
+
+
+class PurchaseOrderReceiptLineRead(BaseModel):
+    purchase_order_line_id: str
+    quantity_received: int
+    inventory_movement_id: str
+
+
+class PurchaseOrderReceiptRead(BaseModel):
+    id: str
+    purchase_order_id: str
+    purchase_order_status: Literal["ordered", "partially_received", "received"]
+    idempotency_key: str
+    created_at: datetime
+    lines: list[PurchaseOrderReceiptLineRead]
+
+
+
 class AuditRead(BaseModel):
     id: str
     actor: str

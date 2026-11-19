@@ -1,0 +1,65 @@
+name: Procurement Integration
+
+on:
+  push:
+    branches:
+      - feat/supplier-purchase-order-procurement-20261119
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: procurement-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  procurement:
+    name: PostgreSQL 16 procurement and inventory integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: emporia_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d emporia_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      EMPORIA_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/emporia_test
+      EMPORIA_API_TOKEN: test-secret
+      EMPORIA_JWT_SECRET: unit-test-jwt-secret-with-at-least-32-chars
+      EMPORIA_ALLOW_REGISTRATION: "true"
+      EMPORIA_WORKSPACE_ID: test-workspace
+      EMPORIA_ENVIRONMENT: test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install API and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Apply complete migration chain
+        run: alembic upgrade head
+      - name: Lint
+        run: ruff check src tests
+      - name: Run complete API and PostgreSQL integration suite
+        run: pytest -q
