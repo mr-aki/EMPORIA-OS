@@ -67,7 +67,7 @@ def test_concurrent_identical_purchase_order_receipts_create_one_inventory_movem
         _connection, _cursor, statement, _parameters, _context, _executemany
     ):
         normalized = " ".join(statement.lower().split())
-        if normalized.startswith("update purchase_orders"):
+        if normalized.startswith("update purchase_orders") and "updated_at=purchase_orders.updated_at" in normalized:
             barrier.wait(timeout=15)
 
     def post_receipt():
