@@ -467,9 +467,9 @@ def receive_purchase_order(
         request_fingerprint=fingerprint,
     )
     session.add(receipt)
-    session.flush()
 
     try:
+        session.flush()
         for item in sorted(
             payload.lines,
             key=lambda entry: line_map[entry.purchase_order_line_id].product_id,

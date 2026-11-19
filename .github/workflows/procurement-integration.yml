@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: procurement-integration-\${{ github.ref }}
+  group: procurement-integration-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

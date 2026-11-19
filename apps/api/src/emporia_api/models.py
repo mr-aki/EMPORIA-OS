@@ -121,6 +121,7 @@ class InventoryMovement(Base):
             "workspace_id", "idempotency_key",
             name="uq_inventory_movements_workspace_idempotency",
         ),
+        Index("uq_inventory_movements_id_workspace", "id", "workspace_id", unique=True),
         Index(
             "ix_inventory_movements_workspace_product_created_at",
             "workspace_id", "product_id", "created_at",
@@ -221,6 +222,7 @@ class PurchaseOrderLine(Base):
 
     __tablename__ = "purchase_order_lines"
     __table_args__ = (
+        UniqueConstraint("id", "workspace_id", name="uq_purchase_order_lines_id_workspace"),
         ForeignKeyConstraint(
             ["purchase_order_id", "workspace_id"],
             ["purchase_orders.id", "purchase_orders.workspace_id"],
@@ -307,9 +309,9 @@ class PurchaseOrderReceiptLine(Base):
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
-            ["inventory_movement_id"],
-            ["inventory_movements.id"],
-            name="fk_purchase_order_receipt_lines_inventory_movement",
+            ["inventory_movement_id", "workspace_id"],
+            ["inventory_movements.id", "inventory_movements.workspace_id"],
+            name="fk_purchase_order_receipt_lines_inventory_movement_workspace",
             ondelete="RESTRICT",
         ),
         UniqueConstraint(

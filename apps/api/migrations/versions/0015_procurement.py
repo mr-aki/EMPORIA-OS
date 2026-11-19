@@ -107,6 +107,7 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id", "workspace_id", name="uq_purchase_order_lines_id_workspace"),
         sa.UniqueConstraint(
             "purchase_order_id", "product_id",
             name="uq_purchase_order_lines_order_product",
@@ -170,9 +171,9 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["inventory_movement_id"],
-            ["inventory_movements.id"],
-            name="fk_purchase_order_receipt_lines_inventory_movement",
+            ["inventory_movement_id", "workspace_id"],
+            ["inventory_movements.id", "inventory_movements.workspace_id"],
+            name="fk_purchase_order_receipt_lines_inventory_movement_workspace",
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id"),

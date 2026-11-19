@@ -93,6 +93,13 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             item["name"]
             for item in inspector.get_unique_constraints("purchase_order_receipts")
         }
+        assert "uq_purchase_order_lines_id_workspace" in {
+            item["name"]
+            for item in inspector.get_unique_constraints("purchase_order_lines")
+        }
+        assert "uq_inventory_movements_id_workspace" in {
+            item["name"] for item in inspector.get_indexes("inventory_movements")
+        }
         assert "fk_purchase_orders_supplier_workspace" in {
             item["name"] for item in inspector.get_foreign_keys("purchase_orders")
         }

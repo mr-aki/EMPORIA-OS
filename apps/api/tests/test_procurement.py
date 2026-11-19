@@ -347,3 +347,43 @@ def test_procurement_receipt_links_to_immutable_inventory_movement(client, auth_
         assert movement is not None
         assert movement.reference == order["order_number"]
         assert movement.quantity_delta == 2
+
+
+
+def test_idempotency_key_cannot_be_reused_for_a_different_purchase_order(client, auth_headers):
+    supplier = _create_supplier(client, auth_headers)
+    product = _create_product(client, auth_headers)
+    first = _create_order(client, auth_headers, supplier, product, number="PO-IDEM-001")
+    second = _create_order(client, auth_headers, supplier, product, number="PO-IDEM-002")
+    client.post(f"/api/v1/purchase-orders/{first['id']}/order", headers=auth_headers)
+    client.post(f"/api/v1/purchase-orders/{second['id']}/order", headers=auth_headers)
+
+    accepted = client.post(
+        f"/api/v1/purchase-orders/{first['id']}/receipts",
+        headers=auth_headers,
+        json={
+            "idempotency_key": "po-global-key-001",
+            "lines": [
+                {
+                    "purchase_order_line_id": first["lines"][0]["id"],
+                    "quantity_received": 1,
+                }
+            ],
+        },
+    )
+    assert accepted.status_code == 201, accepted.text
+
+    reused = client.post(
+        f"/api/v1/purchase-orders/{second['id']}/receipts",
+        headers=auth_headers,
+        json={
+            "idempotency_key": "po-global-key-001",
+            "lines": [
+                {
+                    "purchase_order_line_id": second["lines"][0]["id"],
+                    "quantity_received": 1,
+                }
+            ],
+        },
+    )
+    assert reused.status_code == 409
