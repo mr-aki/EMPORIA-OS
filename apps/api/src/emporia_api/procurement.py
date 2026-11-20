@@ -2,10 +2,11 @@
 
 import hashlib
 import json
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,7 @@ from emporia_api.schemas import (
     PurchaseOrderRead,
     PurchaseOrderReceiptCreate,
     PurchaseOrderReceiptRead,
+    ProcurementSpendRead,
     SupplierCreate,
     SupplierRead,
     SupplierUpdate,
@@ -62,13 +64,23 @@ def _order_or_404(session: Session, order_id: str, workspace_id: str) -> Purchas
 
 
 def _order_read(session: Session, order: PurchaseOrder) -> dict[str, object]:
-    lines = session.scalars(
-        select(PurchaseOrderLine)
-        .where(
-            PurchaseOrderLine.workspace_id == order.workspace_id,
-            PurchaseOrderLine.purchase_order_id == order.id,
+    lines = list(
+        session.scalars(
+            select(PurchaseOrderLine)
+            .where(
+                PurchaseOrderLine.workspace_id == order.workspace_id,
+                PurchaseOrderLine.purchase_order_id == order.id,
+            )
+            .order_by(PurchaseOrderLine.created_at.asc(), PurchaseOrderLine.id.asc())
         )
-        .order_by(PurchaseOrderLine.created_at.asc(), PurchaseOrderLine.id.asc())
+    )
+    ordered_subtotal = sum(
+        (line.unit_cost * line.quantity_ordered for line in lines),
+        Decimal("0"),
+    )
+    received_subtotal = sum(
+        (line.unit_cost * line.quantity_received for line in lines),
+        Decimal("0"),
     )
     return {
         "id": order.id,
@@ -79,7 +91,10 @@ def _order_read(session: Session, order: PurchaseOrder) -> dict[str, object]:
         "notes": order.notes,
         "created_at": order.created_at,
         "updated_at": order.updated_at,
-        "lines": list(lines),
+        "ordered_subtotal": ordered_subtotal,
+        "received_subtotal": received_subtotal,
+        "outstanding_subtotal": ordered_subtotal - received_subtotal,
+        "lines": lines,
     }
 
 
@@ -214,6 +229,63 @@ def update_supplier(
         ) from exc
     session.refresh(supplier)
     return supplier
+
+
+@router.get(
+    "/api/v1/procurement/spend",
+    response_model=list[ProcurementSpendRead],
+    tags=["procurement"],
+)
+def get_procurement_spend(
+    session: SessionDep,
+    actor: AuthDep,
+    supplier_id: Annotated[str | None, Query(min_length=1, max_length=36)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+):
+    """Summarize placed purchase commitments and received value by supplier/currency."""
+    statement = (
+        select(
+            Supplier.id.label("supplier_id"),
+            Supplier.name.label("supplier_name"),
+            PurchaseOrder.currency.label("currency"),
+            func.count(func.distinct(PurchaseOrder.id)).label("purchase_order_count"),
+            func.sum(
+                PurchaseOrderLine.unit_cost * PurchaseOrderLine.quantity_ordered
+            ).label("ordered_subtotal"),
+            func.sum(
+                PurchaseOrderLine.unit_cost * PurchaseOrderLine.quantity_received
+            ).label("received_subtotal"),
+            func.sum(
+                PurchaseOrderLine.unit_cost
+                * (PurchaseOrderLine.quantity_ordered - PurchaseOrderLine.quantity_received)
+            ).label("outstanding_subtotal"),
+        )
+        .join(
+            PurchaseOrder,
+            and_(
+                PurchaseOrder.supplier_id == Supplier.id,
+                PurchaseOrder.workspace_id == Supplier.workspace_id,
+            ),
+        )
+        .join(
+            PurchaseOrderLine,
+            and_(
+                PurchaseOrderLine.purchase_order_id == PurchaseOrder.id,
+                PurchaseOrderLine.workspace_id == PurchaseOrder.workspace_id,
+            ),
+        )
+        .where(
+            Supplier.workspace_id == actor.workspace_id,
+            PurchaseOrder.workspace_id == actor.workspace_id,
+            PurchaseOrder.status.in_(("ordered", "partially_received", "received")),
+        )
+        .group_by(Supplier.id, Supplier.name, PurchaseOrder.currency)
+        .order_by(Supplier.name.asc(), PurchaseOrder.currency.asc())
+        .limit(limit)
+    )
+    if supplier_id is not None:
+        statement = statement.where(Supplier.id == supplier_id)
+    return [dict(row._mapping) for row in session.execute(statement)]
 
 
 @router.post(
