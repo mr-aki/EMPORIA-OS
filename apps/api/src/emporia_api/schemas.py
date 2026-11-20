@@ -322,7 +322,20 @@ class PurchaseOrderRead(BaseModel):
     notes: str
     created_at: datetime
     updated_at: datetime
+    ordered_subtotal: Decimal
+    received_subtotal: Decimal
+    outstanding_subtotal: Decimal
     lines: list[PurchaseOrderLineRead]
+
+
+class ProcurementSpendRead(BaseModel):
+    supplier_id: str
+    supplier_name: str
+    currency: str
+    purchase_order_count: int
+    ordered_subtotal: Decimal
+    received_subtotal: Decimal
+    outstanding_subtotal: Decimal
 
 
 class PurchaseOrderReceiptLineRead(BaseModel):
