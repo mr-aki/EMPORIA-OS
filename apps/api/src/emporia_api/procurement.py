@@ -23,11 +23,11 @@ from emporia_api.models import (
     Supplier,
 )
 from emporia_api.schemas import (
+    ProcurementSpendRead,
     PurchaseOrderCreate,
     PurchaseOrderRead,
     PurchaseOrderReceiptCreate,
     PurchaseOrderReceiptRead,
-    ProcurementSpendRead,
     SupplierCreate,
     SupplierRead,
     SupplierUpdate,
@@ -76,11 +76,11 @@ def _order_read(session: Session, order: PurchaseOrder) -> dict[str, object]:
     )
     ordered_subtotal = sum(
         (line.unit_cost * line.quantity_ordered for line in lines),
-        Decimal("0"),
+        Decimal(0),
     )
     received_subtotal = sum(
         (line.unit_cost * line.quantity_received for line in lines),
-        Decimal("0"),
+        Decimal(0),
     )
     return {
         "id": order.id,
