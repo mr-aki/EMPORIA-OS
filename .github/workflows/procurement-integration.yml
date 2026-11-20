@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/supplier-purchase-order-procurement-20261119
+      - feat/procurement-cost-reporting-20261120
   pull_request:
     branches:
       - main

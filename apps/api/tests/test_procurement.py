@@ -387,3 +387,111 @@ def test_idempotency_key_cannot_be_reused_for_a_different_purchase_order(client,
         },
     )
     assert reused.status_code == 409
+
+
+def test_purchase_order_cost_totals_and_supplier_spend_are_currency_scoped(
+    client, auth_headers
+):
+    from decimal import Decimal
+
+    supplier = _create_supplier(client, auth_headers)
+    product = _create_product(client, auth_headers)
+    usd_order = _create_order(
+        client, auth_headers, supplier, product, number="PO-COST-USD", quantity=10
+    )
+    assert Decimal(str(usd_order["ordered_subtotal"])) == Decimal("82.5000")
+    assert Decimal(str(usd_order["received_subtotal"])) == Decimal(0)
+    assert Decimal(str(usd_order["outstanding_subtotal"])) == Decimal("82.5000")
+
+    spend_url = "/api/v1/procurement/spend"
+    assert client.get(spend_url, headers=auth_headers).json() == []
+
+    placed = client.post(
+        f"/api/v1/purchase-orders/{usd_order['id']}/order",
+        headers=auth_headers,
+    )
+    assert placed.status_code == 200, placed.text
+    usd_receipt = client.post(
+        f"/api/v1/purchase-orders/{usd_order['id']}/receipts",
+        headers=auth_headers,
+        json={
+            "idempotency_key": "po-cost-usd-partial",
+            "lines": [
+                {
+                    "purchase_order_line_id": usd_order["lines"][0]["id"],
+                    "quantity_received": 4,
+                }
+            ],
+        },
+    )
+    assert usd_receipt.status_code == 201, usd_receipt.text
+
+    eur_response = client.post(
+        "/api/v1/purchase-orders",
+        headers=auth_headers,
+        json={
+            "order_number": "PO-COST-EUR",
+            "supplier_id": supplier["id"],
+            "currency": "EUR",
+            "lines": [
+                {
+                    "product_id": product["id"],
+                    "quantity_ordered": 3,
+                    "unit_cost": "1.2345",
+                }
+            ],
+        },
+    )
+    assert eur_response.status_code == 201, eur_response.text
+    eur_order = eur_response.json()
+    assert Decimal(str(eur_order["ordered_subtotal"])) == Decimal("3.7035")
+    assert client.post(
+        f"/api/v1/purchase-orders/{eur_order['id']}/order",
+        headers=auth_headers,
+    ).status_code == 200
+    eur_receipt = client.post(
+        f"/api/v1/purchase-orders/{eur_order['id']}/receipts",
+        headers=auth_headers,
+        json={
+            "idempotency_key": "po-cost-eur-partial",
+            "lines": [
+                {
+                    "purchase_order_line_id": eur_order["lines"][0]["id"],
+                    "quantity_received": 1,
+                }
+            ],
+        },
+    )
+    assert eur_receipt.status_code == 201, eur_receipt.text
+
+    report = client.get(spend_url, headers=auth_headers)
+    assert report.status_code == 200, report.text
+    rows = {row["currency"]: row for row in report.json()}
+    assert set(rows) == {"EUR", "USD"}
+    assert rows["USD"]["purchase_order_count"] == 1
+    assert Decimal(str(rows["USD"]["ordered_subtotal"])) == Decimal("82.5000")
+    assert Decimal(str(rows["USD"]["received_subtotal"])) == Decimal("33.0000")
+    assert Decimal(str(rows["USD"]["outstanding_subtotal"])) == Decimal("49.5000")
+    assert rows["EUR"]["purchase_order_count"] == 1
+    assert Decimal(str(rows["EUR"]["ordered_subtotal"])) == Decimal("3.7035")
+    assert Decimal(str(rows["EUR"]["received_subtotal"])) == Decimal("1.2345")
+    assert Decimal(str(rows["EUR"]["outstanding_subtotal"])) == Decimal("2.4690")
+
+    filtered = client.get(
+        f"{spend_url}?supplier_id={supplier['id']}",
+        headers=auth_headers,
+    )
+    assert len(filtered.json()) == 2
+
+    other = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "procurement-spend-other@example.com",
+            "password": "AnotherStrongPassword!2026",
+            "display_name": "Other Spend Owner",
+            "workspace_name": "Other Spend Workspace",
+        },
+    )
+    assert other.status_code == 201
+    other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+    assert client.get(spend_url, headers=other_headers).json() == []
