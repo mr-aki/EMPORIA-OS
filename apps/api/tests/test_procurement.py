@@ -400,7 +400,7 @@ def test_purchase_order_cost_totals_and_supplier_spend_are_currency_scoped(
         client, auth_headers, supplier, product, number="PO-COST-USD", quantity=10
     )
     assert Decimal(str(usd_order["ordered_subtotal"])) == Decimal("82.5000")
-    assert Decimal(str(usd_order["received_subtotal"])) == Decimal(0))
+    assert Decimal(str(usd_order["received_subtotal"])) == Decimal(0)
     assert Decimal(str(usd_order["outstanding_subtotal"])) == Decimal("82.5000")
 
     spend_url = "/api/v1/procurement/spend"
