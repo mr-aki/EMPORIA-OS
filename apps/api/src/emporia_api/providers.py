@@ -19,6 +19,36 @@ class ProviderRequestError(Exception):
     """Raised for a rejected or failed upstream provider request."""
 
 
+def _normalize_token_usage(
+    prompt: Any,
+    completion: Any,
+    total: Any,
+) -> tuple[int | None, int | None, int | None]:
+    """Validate provider token counters before they reach usage and cost accounting."""
+    normalized: list[int | None] = []
+    for field, value in (
+        ("prompt_tokens", prompt),
+        ("completion_tokens", completion),
+        ("total_tokens", total),
+    ):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            raise ValueError(
+                f"Provider usage field {field} must be a non-negative integer"
+            )
+        normalized.append(value)
+
+    prompt_tokens, completion_tokens, total_tokens = normalized
+    if (
+        total_tokens is None
+        and prompt_tokens is not None
+        and completion_tokens is not None
+    ):
+        total_tokens = prompt_tokens + completion_tokens
+    return prompt_tokens, completion_tokens, total_tokens
+
+
 @dataclass(frozen=True)
 class ProviderDescriptor:
     id: str
@@ -279,11 +309,7 @@ class ProviderGateway:
             usage = data.get("usage") or {}
             prompt = usage.get("input_tokens")
             completion = usage.get("output_tokens")
-            total = (
-                prompt + completion
-                if isinstance(prompt, int) and isinstance(completion, int)
-                else None
-            )
+            total = None
         else:
             candidate = data["candidates"][0]
             content = "".join(
@@ -294,4 +320,7 @@ class ProviderGateway:
             prompt = usage.get("promptTokenCount")
             completion = usage.get("candidatesTokenCount")
             total = usage.get("totalTokenCount")
+        prompt, completion, total = _normalize_token_usage(
+            prompt, completion, total
+        )
         return content, prompt, completion, total

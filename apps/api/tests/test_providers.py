@@ -191,3 +191,63 @@ def test_compatible_gateway_rejects_credentialed_base_url():
 
     with pytest.raises(ProviderRequestError, match="absolute HTTP"):
         asyncio.run(gateway.complete(request))
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {"prompt_tokens": -1, "completion_tokens": 3, "total_tokens": 2},
+        {"prompt_tokens": True, "completion_tokens": 3, "total_tokens": 4},
+        {"prompt_tokens": 2, "completion_tokens": 1.5, "total_tokens": 3},
+        {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": "3"},
+    ],
+)
+def test_openai_gateway_rejects_invalid_token_usage_counts(usage):
+    def handler(_request):
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "Provider reply"}}],
+                "usage": usage,
+            },
+        )
+
+    gateway = ProviderGateway(
+        make_config(openai_api_key=SecretStr("test-key")),
+        transport=httpx.MockTransport(handler),
+    )
+    request = ChatCompletionRequest(
+        provider="openai",
+        model="gpt-5",
+        messages=[{"role": "user", "content": "Hello"}],
+    )
+
+    with pytest.raises(ProviderRequestError, match="invalid response"):
+        asyncio.run(gateway.complete(request))
+
+
+def test_openai_gateway_derives_total_when_provider_omits_it():
+    def handler(_request):
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "Provider reply"}}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+            },
+        )
+
+    gateway = ProviderGateway(
+        make_config(openai_api_key=SecretStr("test-key")),
+        transport=httpx.MockTransport(handler),
+    )
+    request = ChatCompletionRequest(
+        provider="openai",
+        model="gpt-5",
+        messages=[{"role": "user", "content": "Hello"}],
+    )
+
+    reply = asyncio.run(gateway.complete(request))
+
+    assert reply.prompt_tokens == 7
+    assert reply.completion_tokens == 3
+    assert reply.total_tokens == 10
