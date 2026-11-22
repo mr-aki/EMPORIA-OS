@@ -76,7 +76,7 @@ def _utc_day_expression(session: Session, run_model: Any):
     """Group timestamps by UTC calendar day, independent of the database session timezone."""
     if session.get_bind().dialect.name == "postgresql":
         return cast(func.timezone("UTC", run_model.created_at), Date)
-    return utc_day
+    return func.date(run_model.created_at)
 
 
 def _aggregate(
