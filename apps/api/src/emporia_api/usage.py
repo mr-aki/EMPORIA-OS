@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, get_current_principal
@@ -70,6 +70,13 @@ def _date_scope(
             )
         )
     return scope
+
+
+def _utc_day_expression(session: Session, run_model: Any):
+    """Group timestamps by UTC calendar day, independent of the database session timezone."""
+    if session.get_bind().dialect.name == "postgresql":
+        return cast(func.timezone("UTC", run_model.created_at), Date)
+    return func.date(run_model.created_at)
 
 
 def _aggregate(
@@ -150,9 +157,10 @@ def _aggregate(
         for (provider, model), values in grouped.items()
     ]
 
+    utc_day = _utc_day_expression(session, run_model)
     daily_rows = session.execute(
         select(
-            func.date(run_model.created_at),
+            utc_day,
             run_model.status,
             func.count(run_model.id),
             func.coalesce(func.sum(run_model.prompt_tokens), 0),
@@ -160,7 +168,7 @@ def _aggregate(
             func.coalesce(func.sum(run_model.total_tokens), 0),
         )
         .where(*scope)
-        .group_by(func.date(run_model.created_at), run_model.status)
+        .group_by(utc_day, run_model.status)
     ).all()
     daily_map: dict[date, dict[str, int]] = {}
     for day_value, run_status, count, prompt, completion, total in daily_rows:
@@ -412,15 +420,16 @@ def _cost_aggregate(
         for provider, model, count, priced, cost in grouped_rows
     ]
 
+    utc_day = _utc_day_expression(session, run_model)
     daily_rows = session.execute(
         select(
-            func.date(run_model.created_at),
+            utc_day,
             func.count(run_model.id),
             func.count(run_model.estimated_cost_usd),
             func.coalesce(func.sum(run_model.estimated_cost_usd), 0),
         )
         .where(*scope)
-        .group_by(func.date(run_model.created_at))
+        .group_by(utc_day)
     ).all()
     daily = [
         DailyCost(

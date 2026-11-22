@@ -5,6 +5,7 @@ on:
     branches:
       - feat/supplier-purchase-order-procurement-20261119
       - feat/procurement-cost-reporting-20261120
+      - fix/utc-usage-cost-day-buckets-20261122
   pull_request:
     branches:
       - main
@@ -45,6 +46,7 @@ jobs:
       EMPORIA_ALLOW_REGISTRATION: "true"
       EMPORIA_WORKSPACE_ID: test-workspace
       EMPORIA_ENVIRONMENT: test
+      PGOPTIONS: "-c timezone=America/Los_Angeles"
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
