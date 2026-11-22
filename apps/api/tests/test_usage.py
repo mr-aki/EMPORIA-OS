@@ -354,3 +354,59 @@ def test_only_workspace_owners_and_admins_can_change_model_prices(
         },
     )
     assert denied.status_code == 403
+
+
+def test_usage_and_cost_daily_buckets_are_utc_across_database_timezones(
+    client, auth_headers
+):
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from emporia_api.database import SessionLocal
+    from emporia_api.models import AgentRun
+
+    workspace_id = client.get("/api/v1/auth/me", headers=auth_headers).json()[
+        "workspaces"
+    ][0]["id"]
+    just_after_utc_midnight = datetime(2026, 11, 22, 0, 30, tzinfo=UTC)
+    with SessionLocal() as session:
+        session.add(
+            AgentRun(
+                workspace_id=workspace_id,
+                agent_id="commerce-strategist",
+                agent_version="1.0.0",
+                provider="openai",
+                model="gpt-5",
+                status="completed",
+                task="UTC daily aggregation regression",
+                prompt_tokens=11,
+                completion_tokens=7,
+                total_tokens=18,
+                input_price_usd_per_million_tokens=Decimal("2"),
+                output_price_usd_per_million_tokens=Decimal("8"),
+                estimated_cost_usd=Decimal("0.000078"),
+                created_at=just_after_utc_midnight,
+                completed_at=just_after_utc_midnight,
+            )
+        )
+        session.commit()
+
+    usage = client.get(
+        "/api/v1/usage/summary?start_date=2026-11-22&end_date=2026-11-22",
+        headers=auth_headers,
+    )
+    assert usage.status_code == 200, usage.text
+    assert usage.json()["totals"]["runs"] == 1
+    assert usage.json()["by_day"][0]["date"] == "2026-11-22"
+    assert usage.json()["by_day"][0]["total_tokens"] == 18
+
+    costs = client.get(
+        "/api/v1/usage/costs?start_date=2026-11-22&end_date=2026-11-22",
+        headers=auth_headers,
+    )
+    assert costs.status_code == 200, costs.text
+    assert costs.json()["totals"]["runs"] == 1
+    assert costs.json()["by_day"][0]["date"] == "2026-11-22"
+    assert Decimal(costs.json()["by_day"][0]["estimated_cost_usd"]) == Decimal(
+        "0.0000780000000000"
+    )
