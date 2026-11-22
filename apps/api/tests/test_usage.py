@@ -362,8 +362,17 @@ def test_usage_and_cost_daily_buckets_are_utc_across_database_timezones(
     from datetime import UTC, datetime
     from decimal import Decimal
 
-    from emporia_api.database import SessionLocal
+    from sqlalchemy import text
+
+    from emporia_api.database import SessionLocal, engine
     from emporia_api.models import AgentRun
+
+    if engine.dialect.name == "postgresql":
+        with SessionLocal() as session:
+            assert (
+                session.execute(text("SHOW TIME ZONE")).scalar_one()
+                == "America/Los_Angeles"
+            )
 
     workspace_id = client.get("/api/v1/auth/me", headers=auth_headers).json()[
         "workspaces"
