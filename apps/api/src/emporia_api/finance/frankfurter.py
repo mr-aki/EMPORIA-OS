@@ -59,6 +59,7 @@ class FrankfurterClient:
         self.historical_cache_seconds = max(60, historical_cache_seconds)
         self._cache: dict[tuple[str, str, date | None], tuple[float, FXRate]] = {}
         self._cache_lock = asyncio.Lock()
+        self._inflight: dict[tuple[str, str, date | None], asyncio.Task[FXRate]] = {}
 
     @staticmethod
     def _currency(value: str) -> str:
@@ -86,80 +87,110 @@ class FrankfurterClient:
             if cached and cached[0] > time.monotonic():
                 return cached[1]
 
-            url = (
-                f"{self.endpoint}/rate/"
-                f"{normalized_base}/{normalized_quote}"
-            )
-            params = {"date": on_date.isoformat()} if on_date else None
-            try:
-                async with httpx.AsyncClient(
-                    timeout=self.timeout,
-                    transport=self.transport,
-                    follow_redirects=False,
-                ) as client:
-                    response = await client.get(url, params=params)
-            except httpx.TimeoutException as exc:
-                raise FXProviderUnavailable("Frankfurter request timed out") from exc
-            except httpx.RequestError as exc:
-                raise FXProviderUnavailable("Could not connect to Frankfurter") from exc
+            task = self._inflight.get(key)
+            if task is None:
+                task = asyncio.create_task(
+                    self._fetch_and_cache(
+                        key, normalized_base, normalized_quote, on_date
+                    )
+                )
+                self._inflight[key] = task
 
-            if response.status_code == 404:
-                raise FXRateNotFound(
-                    f"No {normalized_base}/{normalized_quote} rate was found"
-                    + (f" for {on_date.isoformat()}" if on_date else "")
-                )
-            if response.status_code in {429, 502, 503, 504}:
-                raise FXProviderUnavailable(
-                    f"Frankfurter returned HTTP {response.status_code}"
-                )
-            if response.is_error:
-                raise FXProviderError(
-                    f"Frankfurter rejected the request with HTTP {response.status_code}"
-                )
+        # One cancelled waiter must not cancel a request shared by other callers.
+        return await asyncio.shield(task)
 
-            try:
-                payload: Any = response.json()
-                if not isinstance(payload, dict):
-                    raise TypeError("Rate response must be a JSON object")
-                returned_base = str(payload["base"]).upper()
-                returned_quote = str(payload["quote"]).upper()
-                if returned_base != normalized_base or returned_quote != normalized_quote:
-                    raise ValueError("Provider returned a different currency pair")
-                rate = Decimal(str(payload["rate"]))
-                observation_date = date.fromisoformat(str(payload["date"]))
-                if not rate.is_finite() or rate <= 0:
-                    raise ValueError("Provider rate must be a positive finite decimal")
-                if on_date is not None and observation_date > on_date:
-                    raise ValueError("Provider returned an observation after the requested date")
-                if observation_date > datetime.now().date():
-                    raise ValueError("Provider returned a future observation")
-                result = FXRate(
-                    base=returned_base,
-                    quote=returned_quote,
-                    rate=rate,
-                    date=observation_date,
-                )
-            except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
-                raise FXProviderError("Frankfurter returned an invalid rate response") from exc
-
+    async def _fetch_and_cache(
+        self,
+        key: tuple[str, str, date | None],
+        base: str,
+        quote: str,
+        on_date: date | None,
+    ) -> FXRate:
+        current_task = asyncio.current_task()
+        try:
+            result = await self._request_rate(base, quote, on_date)
             ttl = (
                 self.historical_cache_seconds
                 if on_date is not None
                 else self.latest_cache_seconds
             )
             now = time.monotonic()
-            self._cache[key] = (now + ttl, result)
-            if len(self._cache) > self.maximum_cache_entries:
-                expired = [
-                    cache_key
-                    for cache_key, (expires, _) in self._cache.items()
-                    if expires <= now
-                ]
-                for cache_key in expired:
-                    self._cache.pop(cache_key, None)
-                while len(self._cache) > self.maximum_cache_entries:
-                    self._cache.pop(next(iter(self._cache)))
+            async with self._cache_lock:
+                self._cache[key] = (now + ttl, result)
+                if len(self._cache) > self.maximum_cache_entries:
+                    expired = [
+                        cache_key
+                        for cache_key, (expires, _) in self._cache.items()
+                        if expires <= now
+                    ]
+                    for cache_key in expired:
+                        self._cache.pop(cache_key, None)
+                    while len(self._cache) > self.maximum_cache_entries:
+                        self._cache.pop(next(iter(self._cache)))
             return result
+        finally:
+            async with self._cache_lock:
+                if self._inflight.get(key) is current_task:
+                    self._inflight.pop(key, None)
+
+    async def _request_rate(
+        self,
+        base: str,
+        quote: str,
+        on_date: date | None,
+    ) -> FXRate:
+        url = f"{self.endpoint}/rate/{base}/{quote}"
+        params = {"date": on_date.isoformat()} if on_date else None
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout,
+                transport=self.transport,
+                follow_redirects=False,
+            ) as client:
+                response = await client.get(url, params=params)
+        except httpx.TimeoutException as exc:
+            raise FXProviderUnavailable("Frankfurter request timed out") from exc
+        except httpx.RequestError as exc:
+            raise FXProviderUnavailable("Could not connect to Frankfurter") from exc
+
+        if response.status_code == 404:
+            raise FXRateNotFound(
+                f"No {base}/{quote} rate was found"
+                + (f" for {on_date.isoformat()}" if on_date else "")
+            )
+        if response.status_code in {429, 502, 503, 504}:
+            raise FXProviderUnavailable(
+                f"Frankfurter returned HTTP {response.status_code}"
+            )
+        if response.is_error:
+            raise FXProviderError(
+                f"Frankfurter rejected the request with HTTP {response.status_code}"
+            )
+
+        try:
+            payload: Any = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Rate response must be a JSON object")
+            returned_base = str(payload["base"]).upper()
+            returned_quote = str(payload["quote"]).upper()
+            if returned_base != base or returned_quote != quote:
+                raise ValueError("Provider returned a different currency pair")
+            rate = Decimal(str(payload["rate"]))
+            observation_date = date.fromisoformat(str(payload["date"]))
+            if not rate.is_finite() or rate <= 0:
+                raise ValueError("Provider rate must be a positive finite decimal")
+            if on_date is not None and observation_date > on_date:
+                raise ValueError("Provider returned an observation after the requested date")
+            if observation_date > datetime.now().date():
+                raise ValueError("Provider returned a future observation")
+            return FXRate(
+                base=returned_base,
+                quote=returned_quote,
+                rate=rate,
+                date=observation_date,
+            )
+        except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+            raise FXProviderError("Frankfurter returned an invalid rate response") from exc
 
     async def convert(
         self,
