@@ -190,3 +190,109 @@ def test_frankfurter_rejects_invalid_amount_before_network():
     )
     with pytest.raises(ValueError, match="positive finite"):
         asyncio.run(client.convert(Decimal(0), "USD", "EUR"))
+
+
+
+class _ConcurrentFXTransport(httpx.AsyncBaseTransport):
+    def __init__(self) -> None:
+        self.calls = 0
+        self.active = 0
+        self.maximum_active = 0
+        self.two_requests_started = asyncio.Event()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.calls += 1
+        self.active += 1
+        self.maximum_active = max(self.maximum_active, self.active)
+        if self.calls >= 2:
+            self.two_requests_started.set()
+        try:
+            try:
+                await asyncio.wait_for(self.two_requests_started.wait(), timeout=0.2)
+            except TimeoutError:
+                pass
+            _, base, quote = request.url.path.rsplit("/", 2)
+            return httpx.Response(
+                200,
+                json={
+                    "date": "2026-11-20",
+                    "base": base,
+                    "quote": quote,
+                    "rate": "1.25",
+                },
+                request=request,
+            )
+        finally:
+            self.active -= 1
+
+
+def test_frankfurter_fetches_different_pairs_without_global_serialization():
+    transport = _ConcurrentFXTransport()
+    client = FrankfurterClient(transport=transport)
+
+    async def fetch_pairs():
+        return await asyncio.gather(
+            client.get_rate("USD", "EUR"),
+            client.get_rate("GBP", "EUR"),
+        )
+
+    results = asyncio.run(fetch_pairs())
+
+    assert {(item.base, item.quote) for item in results} == {
+        ("USD", "EUR"),
+        ("GBP", "EUR"),
+    }
+    assert transport.calls == 2
+    assert transport.maximum_active == 2
+
+
+def test_frankfurter_coalesces_concurrent_requests_for_the_same_pair():
+    transport = _ConcurrentFXTransport()
+    client = FrankfurterClient(transport=transport)
+
+    async def fetch_same_pair():
+        return await asyncio.gather(
+            *(client.get_rate("USD", "EUR") for _ in range(8))
+        )
+
+    results = asyncio.run(fetch_same_pair())
+
+    assert len(results) == 8
+    assert all(item == results[0] for item in results)
+    assert transport.calls == 1
+
+
+def test_frankfurter_failed_shared_request_is_removed_so_later_call_can_retry():
+    calls = 0
+
+    def handler(_request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(503)
+        return httpx.Response(
+            200,
+            json={
+                "date": "2026-11-20",
+                "base": "USD",
+                "quote": "EUR",
+                "rate": "0.92",
+            },
+        )
+
+    client = FrankfurterClient(transport=httpx.MockTransport(handler))
+
+    async def fail_then_retry():
+        failures = await asyncio.gather(
+            *(client.get_rate("USD", "EUR") for _ in range(4)),
+            return_exceptions=True,
+        )
+        recovered = await client.get_rate("USD", "EUR")
+        return failures, recovered
+
+    failures, recovered = asyncio.run(fail_then_retry())
+
+    assert len(failures) == 4
+    assert all(isinstance(item, FXProviderUnavailable) for item in failures)
+    assert recovered.rate == Decimal("0.92")
+    assert calls == 2
