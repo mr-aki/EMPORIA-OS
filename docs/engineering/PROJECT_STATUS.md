@@ -31,12 +31,13 @@ A document, prompt, registry entry, mock, or UI control is not proof that a capa
 | Database migrations | implemented | Alembic migration for fresh databases and compatibility with the earlier venture/audit/agent-run schema; tests cover fresh and legacy database upgrades |
 | Audit events | implemented | Persistent event records for venture changes, AI calls, agent runs, research calls, and workspace creation |
 | AI provider gateway | implemented | OpenAI, Anthropic, Gemini, and operator-configured OpenAI-compatible adapters; upstream HTTP contracts are tested with mocks |
-| Specialist agent runtime | implemented | Eight versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
+| Specialist agent runtime | implemented | Fifteen versioned advisory definitions, public category/deliverable metadata, persisted run history, token usage, and terminal failure handling for unexpected research/provider exceptions |
 | Network research | implemented | Explicit Brave Search connector, bounded regional search requests, source metadata, response validation, rate-limit mapping, and untrusted external-context handling |
 | FX reference rates | implemented | Keyless Frankfurter daily rate client with latest/historical lookup, in-process caching, Decimal conversion, request validation, and workspace audit events |
 | Commerce skills | implemented | 60 versioned advisory skills across four implementation packs, typed input contracts, bounded validation, provider-backed execution, workspace-scoped persisted runs, token ceiling, audit events, and required-output section/body evaluation |
 | Action governance | implemented | Four allow-listed commerce proposal types, typed validation, separate owner/admin approval, requester separation-of-duties, owner-managed existing-user onboarding, cancellation, workspace audit/idempotency, and fail-closed execution gate; no external executors registered |
-| Durable background execution | implemented | PostgreSQL-backed workspace-scoped jobs; idempotent enqueue/list/get/cancel; atomic claims, bounded retries, lease recovery and periodic lease renewal; current account and membership are revalidated before dispatch; separate worker container; only advisory agent/skill handlers are available |
+| Durable background execution | implemented | PostgreSQL-backed workspace-scoped jobs; idempotent enqueue/list/get/cancel; atomic claims, bounded retries, lease recovery and periodic lease renewal; current account and membership are revalidated before dispatch; separate worker container; advisory agent/skill handlers plus sequential workflow jobs |
+| Sequential workflow orchestration | implemented | Persisted 2–8 step workflows compose registered advisory agents and skills; workspace-scoped API, validation, per-step idempotency, previous-output handoff, resumable worker retries, cancellation before claim, step state and audit events; no parallel DAG, conditional branching, scheduled triggers, or external commerce actions |
 
 The latest API pull request must pass GitHub Actions before its changes are considered verified on the default branch. Local and CI provider tests do not prove that a deployment has working credentials, quotas, DNS, or live provider access.
 
@@ -57,7 +58,7 @@ The latest API pull request must pass GitHub Actions before its changes are cons
 - Production frontend/dashboard and responsive operator workspace.
 - Direct Shopify, WooCommerce, Amazon, marketplace, payment, logistics, accounting, and CRM integrations.
 - Complete product, catalogue, supplier, purchase-order, inventory, fulfilment, customer-support, marketing, and finance domains.
-- Workflow scheduler, multi-agent coordination, full agent reasoning/evaluation service, and operator-facing dead-letter tooling.
+- Advanced workflow scheduling (calendar/event triggers), parallel DAG execution, conditional branching, dynamic agent delegation, full agent reasoning/evaluation service, and operator-facing dead-letter tooling.
 - External business-action adapters, spend/budget controls, execution sandbox, compensating transactions, and live commerce-system permissions.
 - Team invitations and full identity lifecycle features.
 - Production hardening evidence: threat model, independent security review, rate limiting, backup/restore drills, monitoring/alerting, load tests, disaster recovery, and a deployment-specific release gate.
@@ -107,3 +108,17 @@ has no browser, shell, payment, order, store-admin, or other external business-a
 The queue is implemented and CI-tested, but it is not a workflow scheduler or multi-agent
 orchestrator. The first version still needs deployment-specific load, failure-recovery, and
 operational monitoring evidence before production readiness can be claimed.
+
+
+## Sequential workflow orchestration slice
+
+Authenticated workspace members with write access can submit a durable workflow containing 2–8 registered advisory-agent or advisory-skill steps:
+
+- `POST /api/v1/workflows/runs` validates every target, provider availability, skill input contract, server token ceiling, total output-token reservation, and previous-output mapping before enqueue.
+- `GET /api/v1/workflows/runs` and `GET /api/v1/workflows/runs/{id}` expose workspace-scoped run and step state without returning stored prompts or raw job payloads.
+- `POST /api/v1/workflows/runs/{id}/cancel` cancels only queued work; a running provider request is not interrupted.
+- Steps execute sequentially through the existing agent and skill services. A later agent may receive the previous step's output as explicitly marked untrusted context; a skill may receive it only through a declared text input field.
+- Each step uses a stable workflow-specific idempotency key. Completed steps remain recorded across worker retries, and the worker queue renews leases and records terminal failures.
+- Workflow execution is bounded to eight steps and 8,192 requested output tokens per workflow. Existing workspace run quotas, provider configuration, agent/skill validation, token budgets, audit records, and authorization checks remain in effect.
+
+This is a sequential workflow runner, not a general-purpose autonomous company scheduler. It has no parallel DAGs, conditions, time/event triggers, agent-generated tool grants, or external commerce actions. Worker and provider behavior still requires deployment-specific reliability and security evaluation before production readiness.

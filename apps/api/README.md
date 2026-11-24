@@ -182,7 +182,7 @@ Provider keys stay on the server and are supplied through environment variables 
 
 ### Specialist agent runtime
 
-Eight reviewed advisory definitions are registered and share the authenticated, persisted agent-run execution path:
+Fifteen versioned advisory specialists are registered and share the authenticated, persisted agent-run execution path:
 
 - commerce-strategist — business model, positioning, validation strategy, and launch decisions.
 - product-research-analyst — opportunity assessment, customer problems, evidence quality, and assortment risk.
@@ -245,6 +245,57 @@ Emporia can retrieve source-linked web context through the official Brave Search
 The separate query is explicit consent to send that query to Brave. The private task text, customer data, credentials, and supplier secrets are not forwarded automatically. Retrieved page content is untrusted evidence, not instructions. Agent history stores source URLs, titles, snippets, hostnames, and page-age metadata.
 
 A valid Brave API key and active entitlement are required for live search. CI uses mocked HTTP responses and does not consume paid API requests.
+
+
+## Sequential workflow orchestration
+
+Workflows compose existing advisory agents and skills into a durable, sequential 2–8 step run. They are submitted to the same separate worker service as individual jobs:
+
+~~~http
+POST /api/v1/workflows/runs
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "name": "Smart-watch launch assessment",
+  "idempotency_key": "smartwatch-assessment-001",
+  "steps": [
+    {
+      "kind": "agent",
+      "agent_id": "commerce-strategist",
+      "payload": {
+        "provider": "openai",
+        "model": "gpt-5",
+        "task": "Build a launch thesis for a smart-watch offer.",
+        "max_tokens": 1200
+      }
+    },
+    {
+      "kind": "agent",
+      "agent_id": "product-research-analyst",
+      "include_previous_output": true,
+      "payload": {
+        "provider": "openai",
+        "model": "gpt-5",
+        "task": "Review the previous strategy and list evidence gaps.",
+        "max_tokens": 1200
+      }
+    }
+  ]
+}
+~~~
+
+The API returns HTTP 202 and a persisted workflow ID. Poll `GET /api/v1/workflows/runs/{workflow_id}` for overall status, per-step status, and result IDs. The full output remains in the corresponding agent/skill run endpoint, not duplicated in the workflow record. Re-submit the exact same payload with the same idempotency key to retrieve the original workflow rather than creating another one.
+
+A skill step can accept the preceding output through a declared text field:
+
+- Set `kind` to `skill`, `skill_id` to a registered skill, and `context_input_key` to one of that skill's declared text input keys.
+- Omit that key from the supplied `inputs`; Emporia inserts the previous step's output after bounding it to the field's declared maximum length.
+- The first step cannot consume previous output. Unknown, non-text, or user-prepopulated handoff fields are rejected.
+
+Each workflow is limited to eight steps and 8,192 requested output tokens in total. Each step uses its own stable idempotency key, and completed steps are persisted before the next step begins. Worker retries can therefore resume from recorded step state without intentionally repeating completed model calls. Cancelling a workflow is supported only before a worker claims it; cancellation does not interrupt an in-flight provider request.
+
+Workflows require a registered JWT account, workspace write permission, configured provider credentials, and a running worker. Every step remains advisory: no storefront, marketplace, payment, supplier, advertising, fulfilment, or customer action is executed. This release supports sequential execution only; it does not provide parallel DAGs, conditional branches, calendar/event triggers, or dynamic agent delegation.
 
 ## Quality checks
 
@@ -407,7 +458,7 @@ A request that would exceed the configured workspace/month limit returns HTTP 42
 
 ## Durable background execution queue
 
-The optional durable queue stores agent/skill execution requests in PostgreSQL and processes
+The optional durable queue stores advisory agent, skill, and sequential workflow requests in PostgreSQL and processes
 them in a separate worker container. Apply Alembic migrations before starting the updated API
 and worker:
 
@@ -463,7 +514,7 @@ closed. The worker constructs a fresh principal from the current membership and 
 substitutes an owner/admin role. The legacy development bearer token cannot enqueue durable
 jobs because it has no persisted account membership to revalidate.
 
-Jobs dispatch only the existing advisory agent and skill handlers. No browser, shell, store
+Jobs dispatch only the existing advisory agent/skill handlers and the bounded sequential workflow orchestrator. No browser, shell, store
 admin, payment, order, campaign, or other external business-action tools are granted. Use
 PostgreSQL for multi-worker deployments; SQLite is intended for local/single-process testing.
 

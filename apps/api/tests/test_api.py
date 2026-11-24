@@ -119,7 +119,15 @@ def test_agent_catalog_requires_auth_and_hides_internal_prompts(client, auth_hea
         "customer-voice-analyst",
         "marketplace-listing-optimizer",
         "retention-lifecycle-specialist",
+        "catalogue-data-architect",
+        "inventory-replenishment-planner",
+        "fulfilment-logistics-analyst",
+        "commerce-finance-controller",
+        "marketplace-policy-compliance-analyst",
+        "customer-support-operations-specialist",
+        "commerce-analytics-experimentation-analyst",
     }
+    assert len(agents) == 15
     assert all(item["tools_enabled"] is False for item in agents)
     assert all("system_prompt" not in item for item in agents)
 

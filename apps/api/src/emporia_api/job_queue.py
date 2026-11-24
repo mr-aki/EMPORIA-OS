@@ -4,7 +4,7 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
 from emporia_api.config import settings
-from emporia_api.models import AuditEvent, BackgroundJob, utcnow
+from emporia_api.models import AuditEvent, BackgroundJob, WorkflowRun, utcnow
 
 
 def claim_next_job(session: Session, worker_id: str) -> str | None:
@@ -38,6 +38,34 @@ def claim_next_job(session: Session, worker_id: str) -> str | None:
         job.locked_at = None
         job.locked_by = None
         job.updated_at = now
+        if job.kind == "workflow":
+            workflow = session.scalar(
+                select(WorkflowRun).where(
+                    WorkflowRun.id == job.result_id,
+                    WorkflowRun.workspace_id == job.workspace_id,
+                )
+            )
+            if workflow is not None and workflow.status not in {"completed", "failed", "cancelled"}:
+                steps = workflow.steps
+                for step in steps:
+                    if step.get("status") in {"queued", "running"}:
+                        step["status"] = "failed"
+                        step["error_message"] = "Worker lease expired after the maximum number of attempts"
+                        step["completed_at"] = now.isoformat()
+                        workflow.failed_step = step.get("sequence")
+                        break
+                workflow.steps = steps
+                workflow.status = "failed"
+                workflow.error_message = "Worker lease expired after the maximum number of attempts"
+                workflow.completed_at = now
+                session.add(AuditEvent(
+                    workspace_id=workflow.workspace_id,
+                    actor=job.actor,
+                    action="workflow.failed",
+                    resource_type="workflow_run",
+                    resource_id=workflow.id,
+                    detail="worker_lease_exhausted",
+                ))
         session.add(AuditEvent(
             workspace_id=job.workspace_id,
             actor=job.actor,

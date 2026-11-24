@@ -374,3 +374,47 @@ class BusinessActionRequest(Base):
         except (TypeError, ValueError):
             return {}
         return value if isinstance(value, dict) else {}
+
+
+class WorkflowRun(Base):
+    """Durable workspace-scoped sequential orchestration run."""
+
+    __tablename__ = "workflow_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "idempotency_key",
+            name="uq_workflow_runs_workspace_idempotency",
+        ),
+        Index("ix_workflow_runs_workspace_created", "workspace_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+    actor: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)
+    steps_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    total_steps: Mapped[int] = mapped_column(Integer, nullable=False)
+    completed_steps: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    background_job_id: Mapped[str] = mapped_column(
+        String(36), index=True, nullable=False
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def steps(self) -> list[dict[str, Any]]:
+        try:
+            value = json.loads(self.steps_json or "[]")
+        except (TypeError, ValueError):
+            return []
+        return value if isinstance(value, list) else []
+
+    @steps.setter
+    def steps(self, value: list[dict[str, Any]]) -> None:
+        self.steps_json = json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
