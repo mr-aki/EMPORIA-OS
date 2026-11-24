@@ -347,3 +347,120 @@ def inventory_cogs(
         ],
         "by_currency_net": net_by_currency,
     }
+
+
+def restore_fifo_cost(
+    session: Session,
+    return_record: InventoryReturn,
+    sale_movement: InventoryMovement,
+    return_movement: InventoryMovement,
+) -> list[InventoryCostReturnAllocation]:
+    """Restore cost from the original sale allocations; unknown historical cost stays unknown."""
+    source_allocations = list(
+        session.scalars(
+            select(InventoryCostAllocation)
+            .join(
+                InventoryCostLayer,
+                and_(
+                    InventoryCostLayer.id == InventoryCostAllocation.cost_layer_id,
+                    InventoryCostLayer.workspace_id == InventoryCostAllocation.workspace_id,
+                ),
+            )
+            .where(
+                InventoryCostAllocation.workspace_id == return_record.workspace_id,
+                InventoryCostAllocation.inventory_movement_id == sale_movement.id,
+            )
+            .order_by(InventoryCostLayer.created_at.asc(), InventoryCostLayer.id.asc())
+            .with_for_update()
+        )
+    )
+
+    if not source_allocations:
+        # Sales created before FIFO costing have no auditable source cost. Restore
+        # their returned stock as uncosted rather than inventing a historical value.
+        layer = create_inbound_cost_layer(session, return_movement)
+        row = InventoryCostReturnAllocation(
+            workspace_id=return_record.workspace_id,
+            product_id=return_record.product_id,
+            inventory_return_id=return_record.id,
+            source_cost_allocation_id=None,
+            cost_layer_id=layer.id,
+            quantity_returned=return_record.quantity_returned,
+            unit_cost=None,
+            currency=None,
+            extended_cost=None,
+            created_at=return_movement.created_at,
+        )
+        session.add(row)
+        session.flush()
+        return [row]
+
+    allocated_quantity = sum(item.quantity_allocated for item in source_allocations)
+    if allocated_quantity != -sale_movement.quantity_delta:
+        raise ValueError(
+            "Original sale cost allocations do not reconcile with the sold quantity"
+        )
+
+    source_ids = [item.id for item in source_allocations]
+    returned_rows = session.execute(
+        select(
+            InventoryCostReturnAllocation.source_cost_allocation_id,
+            func.sum(InventoryCostReturnAllocation.quantity_returned),
+        )
+        .where(
+            InventoryCostReturnAllocation.workspace_id == return_record.workspace_id,
+            InventoryCostReturnAllocation.source_cost_allocation_id.in_(source_ids),
+        )
+        .group_by(InventoryCostReturnAllocation.source_cost_allocation_id)
+    ).all()
+    returned_by_source = {row[0]: int(row[1] or 0) for row in returned_rows}
+
+    remaining = return_record.quantity_returned
+    restored: list[InventoryCostReturnAllocation] = []
+    for source in source_allocations:
+        if remaining == 0:
+            break
+        available = source.quantity_allocated - returned_by_source.get(source.id, 0)
+        if available <= 0:
+            continue
+        quantity = min(available, remaining)
+        layer = session.scalar(
+            select(InventoryCostLayer)
+            .where(
+                InventoryCostLayer.id == source.cost_layer_id,
+                InventoryCostLayer.workspace_id == return_record.workspace_id,
+                InventoryCostLayer.product_id == return_record.product_id,
+            )
+            .with_for_update()
+        )
+        if layer is None or layer.quantity_remaining + quantity > layer.quantity_received:
+            raise ValueError("Original FIFO cost layer cannot accept the requested return quantity")
+
+        layer.quantity_remaining += quantity
+        extended_cost = (
+            (source.unit_cost * Decimal(quantity)).quantize(Decimal("0.00000001"))
+            if source.unit_cost is not None
+            else None
+        )
+        row = InventoryCostReturnAllocation(
+            workspace_id=return_record.workspace_id,
+            product_id=return_record.product_id,
+            inventory_return_id=return_record.id,
+            source_cost_allocation_id=source.id,
+            cost_layer_id=source.cost_layer_id,
+            quantity_returned=quantity,
+            unit_cost=source.unit_cost,
+            currency=source.currency,
+            extended_cost=extended_cost,
+            created_at=return_movement.created_at,
+        )
+        session.add(row)
+        restored.append(row)
+        remaining -= quantity
+
+    if remaining:
+        raise ValueError(
+            "Original sale allocations do not have enough unreturned quantity to restore"
+        )
+    session.flush()
+    return restored
