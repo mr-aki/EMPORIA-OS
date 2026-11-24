@@ -182,7 +182,7 @@ Provider keys stay on the server and are supplied through environment variables 
 
 ### Specialist agent runtime
 
-Eight reviewed advisory definitions are registered and share the authenticated, persisted agent-run execution path:
+Fifteen versioned advisory specialists are registered and share the authenticated, persisted agent-run execution path:
 
 - commerce-strategist — business model, positioning, validation strategy, and launch decisions.
 - product-research-analyst — opportunity assessment, customer problems, evidence quality, and assortment risk.
