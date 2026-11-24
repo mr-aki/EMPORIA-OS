@@ -68,9 +68,9 @@ from emporia_api.output_budgets import (
 )
 from emporia_api.pricing import settle_run_cost, snapshot_model_price
 from emporia_api.procurement import router as procurement_router
-from emporia_api.replenishment import router as replenishment_router
 from emporia_api.providers import ProviderGateway, ProviderNotConfigured, ProviderRequestError
 from emporia_api.rate_limits import RateLimitExceeded, consume_workspace_rate_limit
+from emporia_api.replenishment import router as replenishment_router
 from emporia_api.research.report import build_research_report
 from emporia_api.schemas import (
     AgentJobCreate,
