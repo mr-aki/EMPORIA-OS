@@ -122,7 +122,7 @@ def _validate_steps(payload: WorkflowRunCreate) -> list[dict[str, object]]:
                         detail=f"Step {index + 1} context input is populated automatically; omit it from inputs",
                     )
                 if field.required:
-                    candidate[step.context_input_key] = "Previous workflow step output will be inserted here."
+                    candidate[step.context_input_key] = "x"
             errors = validate_skill_inputs(definition, candidate)
             if errors:
                 raise HTTPException(
