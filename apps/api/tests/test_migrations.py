@@ -39,11 +39,12 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "inventory_cost_allocations",
             "inventory_returns",
             "inventory_cost_return_allocations",
+            "inventory_reorder_policies",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0017_sale_linked_returns"
+        assert revision == "0018_inventory_reorder_policies"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -77,6 +78,15 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             and item["referred_table"] == "products"
             for item in inventory_foreign_keys
         )
+        assert "uq_inventory_reorder_policies_workspace_product" in {
+            item["name"] for item in inspector.get_unique_constraints("inventory_reorder_policies")
+        }
+        assert "fk_inventory_reorder_policies_product_workspace" in {
+            item["name"] for item in inspector.get_foreign_keys("inventory_reorder_policies")
+        }
+        assert "ck_inventory_reorder_policies_target_above_reorder_point" in {
+            item["name"] for item in inspector.get_check_constraints("inventory_reorder_policies")
+        }
         assert "uq_inventory_movements_workspace_idempotency" in {
             item["name"]
             for item in inspector.get_unique_constraints("inventory_movements")
@@ -264,6 +274,7 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "inventory_movements" in inspector.get_table_names()
         assert "inventory_returns" in inspector.get_table_names()
         assert "inventory_cost_return_allocations" in inspector.get_table_names()
+        assert "inventory_reorder_policies" in inspector.get_table_names()
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
         }
