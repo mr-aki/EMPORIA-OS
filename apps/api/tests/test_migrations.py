@@ -266,7 +266,7 @@ def test_fifo_cost_migration_backfills_existing_stock_as_uncosted(tmp_path, monk
     _upgrade(database_url, "0015_procurement")
 
     engine = create_engine(database_url)
-    created_at = datetime.now(UTC).replace(tzinfo=None)
+    created_at = datetime.now(UTC).replace(tzinfo=None).isoformat(sep=" ")
     try:
         with engine.begin() as connection:
             connection.execute(
