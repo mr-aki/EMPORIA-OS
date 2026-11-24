@@ -161,6 +161,29 @@ class InventoryMovementRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+
+class InventoryReturnCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    quantity_returned: int = Field(strict=True, gt=0, le=1_000_000_000)
+    reason: str = Field(min_length=1, max_length=200)
+    reference: str | None = Field(default=None, max_length=120)
+    idempotency_key: str = Field(
+        min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
+    )
+
+    @field_validator("reason", "reference", mode="before")
+    @classmethod
+    def normalize_return_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+
+class InventoryReturnRead(BaseModel):
+    return_movement: InventoryMovementRead
+    source_sale_movement_id: str
+    quantity_returned: int
+
+
 class InventoryBalanceRead(BaseModel):
     product_id: str
     sku: str
@@ -192,7 +215,13 @@ class InventoryCOGSRead(BaseModel):
     allocated_quantity_sold: int
     costed_quantity_sold: int
     uncosted_quantity_sold: int
+    allocated_quantity_returned: int
+    costed_quantity_returned: int
+    uncosted_quantity_returned: int
+    net_quantity_sold: int
     by_currency: list[InventoryCostByCurrencyRead]
+    by_currency_returns: list[InventoryCostByCurrencyRead]
+    by_currency_net: list[InventoryCostByCurrencyRead]
     costing_method: Literal["fifo"] = "fifo"
 
 

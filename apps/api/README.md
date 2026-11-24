@@ -504,6 +504,7 @@ The procurement API keeps supplier and purchase-order records inside the authent
 - GET /api/v1/purchase-orders/{id}
 - POST /api/v1/purchase-orders/{id}/order
 - POST /api/v1/purchase-orders/{id}/receipts
+- POST /api/v1/products/{id}/inventory/sales/{sale_movement_id}/returns
 
 A receipt requires an idempotency key and positive quantities for existing purchase-order lines. Posting a receipt, increasing received quantities, writing inventory movements, changing the purchase-order status, and appending audit events happen in one database transaction. Replayed identical requests return the original receipt; reusing a key with a different payload returns HTTP 409. Quantities cannot exceed the outstanding ordered amount. External supplier messaging, payments, freight, multi-warehouse allocation, and supplier portal access are not included.
 
@@ -512,11 +513,11 @@ Purchase-order responses include ordered, received, and outstanding subtotals ca
 
 ## FIFO inventory costing
 
-Inventory cost layers are created atomically with every positive inventory movement. Purchase-order receipts create costed layers using the purchase-order line unit cost and currency. Manual receipts, returns, positive adjustments, and pre-costing opening stock create explicitly uncosted layers; the API never invents a cost for them.
+Inventory cost layers are created atomically with every positive inventory movement. Purchase-order receipts create costed layers using the purchase-order line unit cost and currency. Manual receipts, positive adjustments, and pre-costing opening stock create explicitly uncosted layers; the API never invents a cost for them. Customer returns must reference an original sale through the linked return endpoint and restore the original sale's cost layers.
 
 Every negative inventory movement consumes the oldest available layers first. Sales produce immutable cost allocations that snapshot quantity, unit cost, currency, and extended cost. Damage and negative adjustments also consume layers so stock and cost-layer quantities remain reconciled, but the COGS report includes sales only.
 
 - GET /api/v1/products/{id}/inventory/valuation returns on-hand, costed, and uncosted quantities plus value grouped by currency.
 - GET /api/v1/products/{id}/inventory/cost-of-goods-sold returns recorded FIFO sale allocations, with costed and uncosted sold quantities and COGS grouped by currency.
 
-Currencies are never combined or converted. Manual returns are uncosted until a future return-to-sale linkage can restore the original cost. The migration backfills existing positive stock as an uncosted opening layer. Historical sales before costing was enabled do not receive fabricated COGS; the COGS endpoint reports only persisted allocations. Freight, duties, taxes, landed-cost allocation, FX translation, and accounting-period close are outside this slice.
+Currencies are never combined or converted. Linked returns restore source sale allocations in FIFO order and cannot cumulatively exceed the original sold quantity. Returns of sales predating FIFO cost allocation are restored as uncosted stock rather than receiving a fabricated historical cost. The COGS endpoint keeps gross sale allocations, reports return cost reversals separately, and provides net quantities and costs by currency. The migration backfills existing positive stock as an uncosted opening layer. Historical sales before costing was enabled do not receive fabricated COGS. Freight, duties, taxes, landed-cost allocation, FX translation, and accounting-period close are outside this slice.
