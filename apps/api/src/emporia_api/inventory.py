@@ -8,15 +8,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, get_current_principal, require_write_access
-from emporia_api.costing import allocate_fifo_cost, create_inbound_cost_layer, inventory_cogs, inventory_valuation
+from emporia_api.costing import (
+    allocate_fifo_cost,
+    create_inbound_cost_layer,
+    inventory_cogs,
+    inventory_valuation,
+)
 from emporia_api.database import get_session
 from emporia_api.models import AuditEvent, InventoryMovement, Product
 from emporia_api.schemas import (
     InventoryBalanceRead,
     InventoryCOGSRead,
     InventoryMovementCreate,
-    InventoryValuationRead,
     InventoryMovementRead,
+    InventoryValuationRead,
 )
 
 router = APIRouter()

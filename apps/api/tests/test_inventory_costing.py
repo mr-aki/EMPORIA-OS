@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from emporia_api.models import InventoryCostAllocation, InventoryCostLayer
 from emporia_api.database import SessionLocal
+from emporia_api.models import InventoryCostAllocation, InventoryCostLayer
 
 
 def _create_product(client, auth_headers, sku="FIFO-001"):
