@@ -636,3 +636,83 @@ class WorkspaceMemberRead(BaseModel):
     display_name: str
     role: Literal["owner", "admin", "operator", "viewer"]
     created_at: datetime
+
+
+class WorkflowAgentStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["agent"]
+    agent_id: str = Field(min_length=1, max_length=100)
+    payload: AgentRunCreate
+    include_previous_output: bool = False
+
+
+class WorkflowSkillStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["skill"]
+    skill_id: str = Field(min_length=1, max_length=120)
+    payload: SkillRunCreate
+    context_input_key: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+WorkflowStepCreate = Annotated[
+    WorkflowAgentStep | WorkflowSkillStep,
+    Field(discriminator="kind"),
+]
+
+
+class WorkflowRunCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    steps: list[WorkflowStepCreate] = Field(min_length=2, max_length=8)
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+
+    @model_validator(mode="after")
+    def bound_workflow_execution(self):
+        total_tokens = sum(step.payload.max_tokens for step in self.steps)
+        if total_tokens > 8192:
+            raise ValueError("A workflow may reserve at most 8192 output tokens across all steps")
+        for index, step in enumerate(self.steps):
+            if index == 0 and (
+                (step.kind == "agent" and step.include_previous_output)
+                or (step.kind == "skill" and step.context_input_key)
+            ):
+                raise ValueError("The first workflow step cannot consume previous-step output")
+            if step.kind == "agent" and step.include_previous_output and len(step.payload.task) > 8000:
+                raise ValueError("Agent task must be at most 8000 characters when previous output is included")
+        return self
+
+
+class WorkflowStepRead(BaseModel):
+    sequence: int
+    kind: Literal["agent", "skill"]
+    target_id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    result_id: str | None = None
+    error_message: str = ""
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class WorkflowRunRead(BaseModel):
+    id: str
+    name: str
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    total_steps: int
+    completed_steps: int
+    failed_step: int | None
+    error_message: str
+    background_job_id: str
+    steps: list[WorkflowStepRead]
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
