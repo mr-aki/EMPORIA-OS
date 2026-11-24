@@ -172,6 +172,26 @@ async def execute_workflow_job(
             states = workflow.steps
             state = states[index]
             message = exc.detail if isinstance(exc.detail, str) else "Workflow step execution was rejected"
+            retryable = exc.status_code in {408, 429, 500, 502, 503, 504} and job.attempts < job.max_attempts
+            if retryable:
+                state["status"] = "queued"
+                state["error_message"] = ""
+                state["started_at"] = None
+                state["completed_at"] = None
+                workflow.steps = states
+                workflow.status = "running"
+                workflow.failed_step = None
+                workflow.error_message = ""
+                session.add(AuditEvent(
+                    workspace_id=workflow.workspace_id,
+                    actor=actor.user_id,
+                    action="workflow.step.retry_scheduled",
+                    resource_type="workflow_run",
+                    resource_id=workflow.id,
+                    detail=f"step:{index + 1};attempt:{job.attempts}",
+                ))
+                session.commit()
+                raise
             state["status"] = "failed"
             state["error_message"] = message[:1000]
             state["completed_at"] = _stamp()
