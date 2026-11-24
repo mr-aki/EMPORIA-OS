@@ -106,10 +106,12 @@ from emporia_api.skills.calculations import calculate_skill
 from emporia_api.skills.evaluation import evaluate_skill_output
 from emporia_api.skills.registry import get_skill, list_skills, validate_skill_inputs
 from emporia_api.usage import router as usage_router
+from emporia_api.workflows.api import router as workflows_router
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.include_router(usage_router)
 app.include_router(actions_router)
+app.include_router(workflows_router)
 SessionDep = Annotated[Session, Depends(get_session)]
 AuthDep = Annotated[Principal, Depends(get_current_principal)]
 
