@@ -225,7 +225,7 @@ def enqueue_workflow(
         payload_json=payload_json,
         status="queued",
         attempts=0,
-        max_attempts=1,
+        max_attempts=3,
         idempotency_key=payload.idempotency_key,
         result_id=workflow.id,
     )
