@@ -1,10 +1,13 @@
 import asyncio
+from datetime import timedelta
 from types import SimpleNamespace
 
 from fastapi import HTTPException
 
 from emporia_api.database import SessionLocal
-from emporia_api.models import BackgroundJob, WorkflowRun
+from emporia_api.job_queue import claim_next_job
+from emporia_api.models import BackgroundJob, WorkflowRun, utcnow
+from emporia_api.config import settings
 
 
 class FakeGateway:
@@ -192,3 +195,28 @@ def test_terminal_step_failure_is_saved_on_workflow_and_job(
     with SessionLocal() as session:
         job = session.get(BackgroundJob, queued.json()["background_job_id"])
         assert job is not None and job.status == "failed"
+
+
+
+def test_exhausted_worker_lease_marks_parent_workflow_failed(
+    client, auth_headers, monkeypatch
+):
+    monkeypatch.setattr("emporia_api.workflows.api.provider_gateway", FakeGateway())
+    queued = client.post("/api/v1/workflows/runs", headers=auth_headers, json=workflow_payload())
+    assert queued.status_code == 202
+    workflow_id = queued.json()["id"]
+    with SessionLocal() as session:
+        job = session.get(BackgroundJob, queued.json()["background_job_id"])
+        job.status = "running"
+        job.attempts = job.max_attempts
+        job.locked_by = "dead-worker"
+        job.locked_at = utcnow() - timedelta(seconds=settings.worker_lease_seconds + 10)
+        session.commit()
+
+    with SessionLocal() as session:
+        assert claim_next_job(session, "replacement-worker") is None
+        workflow = session.get(WorkflowRun, workflow_id)
+        assert workflow.status == "failed"
+        assert workflow.steps[0]["status"] == "failed"
+        job = session.get(BackgroundJob, queued.json()["background_job_id"])
+        assert job.status == "failed"
