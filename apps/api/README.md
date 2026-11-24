@@ -458,7 +458,7 @@ A request that would exceed the configured workspace/month limit returns HTTP 42
 
 ## Durable background execution queue
 
-The optional durable queue stores agent/skill execution requests in PostgreSQL and processes
+The optional durable queue stores advisory agent, skill, and sequential workflow requests in PostgreSQL and processes
 them in a separate worker container. Apply Alembic migrations before starting the updated API
 and worker:
 
@@ -514,7 +514,7 @@ closed. The worker constructs a fresh principal from the current membership and 
 substitutes an owner/admin role. The legacy development bearer token cannot enqueue durable
 jobs because it has no persisted account membership to revalidate.
 
-Jobs dispatch only the existing advisory agent and skill handlers. No browser, shell, store
+Jobs dispatch only the existing advisory agent/skill handlers and the bounded sequential workflow orchestrator. No browser, shell, store
 admin, payment, order, campaign, or other external business-action tools are granted. Use
 PostgreSQL for multi-worker deployments; SQLite is intended for local/single-process testing.
 
