@@ -170,6 +170,32 @@ class InventoryBalanceRead(BaseModel):
 
 
 
+class InventoryCostByCurrencyRead(BaseModel):
+    currency: str
+    quantity: int
+    total_cost: Decimal
+
+
+class InventoryValuationRead(BaseModel):
+    product_id: str
+    sku: str
+    quantity_on_hand: int
+    costed_quantity: int
+    uncosted_quantity: int
+    by_currency: list[InventoryCostByCurrencyRead]
+    costing_method: Literal["fifo"] = "fifo"
+
+
+class InventoryCOGSRead(BaseModel):
+    product_id: str
+    sku: str
+    allocated_quantity_sold: int
+    costed_quantity_sold: int
+    uncosted_quantity_sold: int
+    by_currency: list[InventoryCostByCurrencyRead]
+    costing_method: Literal["fifo"] = "fifo"
+
+
 class SupplierCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

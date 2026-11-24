@@ -8,12 +8,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, get_current_principal, require_write_access
+from emporia_api.costing import (
+    allocate_fifo_cost,
+    create_inbound_cost_layer,
+    inventory_cogs,
+    inventory_valuation,
+)
 from emporia_api.database import get_session
 from emporia_api.models import AuditEvent, InventoryMovement, Product
 from emporia_api.schemas import (
     InventoryBalanceRead,
+    InventoryCOGSRead,
     InventoryMovementCreate,
     InventoryMovementRead,
+    InventoryValuationRead,
 )
 
 router = APIRouter()
@@ -201,6 +209,15 @@ def create_inventory_movement(
             detail="Inventory movement conflicts with an existing ledger record",
         ) from exc
 
+    try:
+        if movement.quantity_delta > 0:
+            create_inbound_cost_layer(session, movement)
+        else:
+            allocate_fifo_cost(session, movement)
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     session.add(
         AuditEvent(
             workspace_id=actor.workspace_id,
@@ -217,3 +234,41 @@ def create_inventory_movement(
     session.commit()
     session.refresh(movement)
     return movement
+
+
+@router.get(
+    "/api/v1/products/{product_id}/inventory/valuation",
+    response_model=InventoryValuationRead,
+    tags=["inventory"],
+)
+def get_inventory_valuation(
+    product_id: str,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Return FIFO inventory value without combining or converting currencies."""
+    product = _product_or_404(session, product_id, actor.workspace_id)
+    return InventoryValuationRead(
+        product_id=product.id,
+        sku=product.sku,
+        **inventory_valuation(session, actor.workspace_id, product_id),
+    )
+
+
+@router.get(
+    "/api/v1/products/{product_id}/inventory/cost-of-goods-sold",
+    response_model=InventoryCOGSRead,
+    tags=["inventory"],
+)
+def get_inventory_cost_of_goods_sold(
+    product_id: str,
+    session: SessionDep,
+    actor: AuthDep,
+):
+    """Return FIFO cost allocations for sales posted after costing was enabled."""
+    product = _product_or_404(session, product_id, actor.workspace_id)
+    return InventoryCOGSRead(
+        product_id=product.id,
+        sku=product.sku,
+        **inventory_cogs(session, actor.workspace_id, product_id),
+    )
