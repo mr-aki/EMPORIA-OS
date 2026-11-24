@@ -320,7 +320,7 @@ def test_partial_linked_returns_restore_original_fifo_cost_and_reverse_cogs(
     assert cogs["allocated_quantity_returned"] == 6
     assert cogs["net_quantity_sold"] == 0
     assert Decimal(str(cogs["by_currency_returns"][0]["total_cost"])) == Decimal("13.00000000")
-    assert Decimal(str(cogs["by_currency_net"][0]["total_cost"])) == Decimal("0")
+    assert Decimal(str(cogs["by_currency_net"][0]["total_cost"])) == Decimal(0)
 
 
 def test_uncosted_sale_return_restores_the_original_uncosted_layer(client, auth_headers):
