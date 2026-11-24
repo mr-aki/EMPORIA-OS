@@ -521,3 +521,17 @@ Every negative inventory movement consumes the oldest available layers first. Sa
 - GET /api/v1/products/{id}/inventory/cost-of-goods-sold returns recorded FIFO sale allocations, with costed and uncosted sold quantities and COGS grouped by currency.
 
 Currencies are never combined or converted. Linked returns restore source sale allocations in FIFO order and cannot cumulatively exceed the original sold quantity. Returns of sales predating FIFO cost allocation are restored as uncosted stock rather than receiving a fabricated historical cost. The COGS endpoint keeps gross sale allocations, reports return cost reversals separately, and provides net quantities and costs by currency. The migration backfills existing positive stock as an uncosted opening layer. Historical sales before costing was enabled do not receive fabricated COGS. Freight, duties, taxes, landed-cost allocation, FX translation, and accounting-period close are outside this slice.
+
+
+## Inventory replenishment planning
+
+Workspace operators can configure a min/max replenishment policy per product. Policies are stored separately from catalogue attributes so stock thresholds and supplier lead-time assumptions can change without rewriting product identity or inventory history.
+
+- `PUT /api/v1/products/{id}/reorder-policy` — create or replace a product policy.
+- `GET /api/v1/products/{id}/reorder-policy` — read a configured policy.
+- `GET /api/v1/inventory/replenishment?lookback_days=30` — calculate suggestions for configured products.
+- Add `reorder_only=true` to return only products whose projected available stock is at or below their configured reorder point. The `limit` parameter is bounded to 1–100 evaluated products.
+
+The report combines the current append-only stock ledger with quantities still outstanding on ordered or partially received purchase orders. Recent sale movements provide average daily sales and an estimated demand quantity over the configured supplier lead time. Days of cover is calculated from projected available stock and recent average daily sales. Suggested order quantity is the difference between target stock and projected available stock, and is emitted only when the reorder point has been reached. Currency values are not involved in this quantity-only recommendation.
+
+This is decision support: it does not create purchase orders, contact suppliers, or perform purchasing actions. Configure policies with business-specific reorder points and target stock. Sales history can be sparse or seasonally unrepresentative; review suggestions before ordering.

@@ -107,3 +107,12 @@ has no browser, shell, payment, order, store-admin, or other external business-a
 The queue is implemented and CI-tested, but it is not a workflow scheduler or multi-agent
 orchestrator. The first version still needs deployment-specific load, failure-recovery, and
 operational monitoring evidence before production readiness can be claimed.
+
+
+## Inventory replenishment planning
+
+**State on this feature branch:** implemented; merge and release remain pending.
+
+Workspace-scoped reorder policies define a non-negative reorder point, a target stock quantity above that point, and a supplier lead-time assumption. A read-only replenishment report combines stock ledger balances, open purchase-order quantities, and recent sale movements. It reports average daily sales, estimated lead-time demand, days of cover, and a suggested quantity to return to the target stock level.
+
+Policy writes are permission-checked and audited. Policies are protected by a composite product/workspace foreign key and a workspace/product uniqueness constraint. The report uses grouped bounded queries and does not create purchase orders or trigger external supplier activity. Suggestions are operational decision support, not a demand forecast or automatic buying decision.

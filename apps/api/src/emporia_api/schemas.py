@@ -409,6 +409,61 @@ class PurchaseOrderReceiptRead(BaseModel):
 
 
 
+
+class InventoryReorderPolicyWrite(BaseModel):
+    """Min/max replenishment settings; target stock must exceed the reorder point."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reorder_point: int = Field(strict=True, ge=0, le=1_000_000_000)
+    target_stock: int = Field(strict=True, gt=0, le=1_000_000_000)
+    lead_time_days: int = Field(strict=True, ge=0, le=365)
+
+    @model_validator(mode="after")
+    def validate_target_stock(self):
+        if self.target_stock <= self.reorder_point:
+            raise ValueError("target_stock must be greater than reorder_point")
+        return self
+
+
+class InventoryReorderPolicyRead(BaseModel):
+    id: str
+    product_id: str
+    reorder_point: int
+    target_stock: int
+    lead_time_days: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryReplenishmentSuggestionRead(BaseModel):
+    product_id: str
+    sku: str
+    name: str
+    reorder_point: int
+    target_stock: int
+    lead_time_days: int
+    quantity_on_hand: int
+    quantity_incoming: int
+    projected_available: int
+    units_sold_in_period: int
+    lookback_days: int
+    average_daily_sales: Decimal
+    estimated_lead_time_demand: int
+    days_of_cover: Decimal | None
+    should_reorder: bool
+    suggested_order_quantity: int
+
+
+class InventoryReplenishmentRead(BaseModel):
+    lookback_days: int
+    configured_product_count: int
+    reorder_candidate_count: int
+    items: list[InventoryReplenishmentSuggestionRead]
+
+
 class AuditRead(BaseModel):
     id: str
     actor: str

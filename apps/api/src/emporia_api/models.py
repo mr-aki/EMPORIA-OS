@@ -520,6 +520,58 @@ class PurchaseOrderReceiptLine(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+
+class InventoryReorderPolicy(Base):
+    """Workspace-owned min/max replenishment policy for a catalogue product."""
+
+    __tablename__ = "inventory_reorder_policies"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["product_id", "workspace_id"],
+            ["products.id", "products.workspace_id"],
+            name="fk_inventory_reorder_policies_product_workspace",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "workspace_id", "product_id",
+            name="uq_inventory_reorder_policies_workspace_product",
+        ),
+        CheckConstraint(
+            "reorder_point >= 0",
+            name="ck_inventory_reorder_policies_reorder_point_nonnegative",
+        ),
+        CheckConstraint(
+            "target_stock > reorder_point",
+            name="ck_inventory_reorder_policies_target_above_reorder_point",
+        ),
+        CheckConstraint(
+            "lead_time_days >= 0 AND lead_time_days <= 365",
+            name="ck_inventory_reorder_policies_lead_time_range",
+        ),
+        Index(
+            "ix_inventory_reorder_policies_workspace_product",
+            "workspace_id", "product_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    reorder_point: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    target_stock: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_time_days: Mapped[int] = mapped_column(
+        Integer, default=14, server_default="14", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
