@@ -104,6 +104,42 @@ def _resolve_current_principal(session: Session, job: BackgroundJob) -> Principa
     return principal
 
 
+def _mark_workflow_failed(session: Session, job: BackgroundJob, message: str) -> None:
+    """Persist a terminal parent failure when orchestration cannot continue."""
+    if job.kind != "workflow":
+        return
+    from emporia_api.models import WorkflowRun
+
+    workflow = session.scalar(
+        select(WorkflowRun).where(
+            WorkflowRun.id == job.result_id,
+            WorkflowRun.workspace_id == job.workspace_id,
+        )
+    )
+    if workflow is None or workflow.status in {"completed", "cancelled", "failed"}:
+        return
+    states = workflow.steps
+    for state in states:
+        if state.get("status") in {"running", "queued"}:
+            state["status"] = "failed"
+            state["error_message"] = message[:1000]
+            state["completed_at"] = utcnow().isoformat()
+            workflow.failed_step = state.get("sequence")
+            break
+    workflow.steps = states
+    workflow.status = "failed"
+    workflow.error_message = message[:1000]
+    workflow.completed_at = utcnow()
+    session.add(AuditEvent(
+        workspace_id=workflow.workspace_id,
+        actor=job.actor,
+        action="workflow.failed",
+        resource_type="workflow_run",
+        resource_id=workflow.id,
+        detail="worker_terminal_failure",
+    ))
+
+
 def _renew_job_lease(job_id: str, worker_id: str) -> bool:
     """Extend a running job lease only while the caller still owns it."""
     now = utcnow()
@@ -171,6 +207,10 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                 result = await execute_skill(
                     job.target_id, request, Response(), session, principal
                 )
+            elif job.kind == "workflow":
+                from emporia_api.workflows.engine import execute_workflow_job
+
+                result = await execute_workflow_job(job, session, principal)
             else:
                 await _cancel_lease_heartbeat(heartbeat)
                 if not await asyncio.to_thread(_renew_job_lease, job_id, worker_id):
@@ -214,8 +254,11 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                 return False
             session.refresh(job)
             message = exc.detail if isinstance(exc.detail, str) else "Execution request rejected"
+            retryable = exc.status_code in RETRYABLE_HTTP_STATUSES
+            if not retryable or job.attempts >= job.max_attempts:
+                _mark_workflow_failed(session, job, message)
             _record_job_failure(
-                session, job, message, retryable=exc.status_code in RETRYABLE_HTTP_STATUSES
+                session, job, message, retryable=retryable
             )
             logger.warning(
                 "Background job failed: id=%s status=%s attempt=%s",
@@ -232,6 +275,7 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                 return False
             session.refresh(job)
             logger.exception("Unexpected background job failure: id=%s", job.id)
+            _mark_workflow_failed(session, job, "Unexpected worker execution failure")
             _record_job_failure(
                 session, job, "Unexpected worker execution failure", retryable=False
             )
