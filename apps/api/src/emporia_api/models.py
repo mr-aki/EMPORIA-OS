@@ -122,6 +122,7 @@ class InventoryMovement(Base):
             name="uq_inventory_movements_workspace_idempotency",
         ),
         Index("uq_inventory_movements_id_workspace", "id", "workspace_id", unique=True),
+        Index("uq_inventory_movements_id_workspace_product", "id", "workspace_id", "product_id", unique=True),
         Index(
             "ix_inventory_movements_workspace_product_created_at",
             "workspace_id", "product_id", "created_at",
@@ -172,6 +173,7 @@ class InventoryCostLayer(Base):
             ondelete="RESTRICT",
         ),
         UniqueConstraint("id", "workspace_id", name="uq_inventory_cost_layers_id_workspace"),
+        Index("uq_inventory_cost_layers_id_workspace_product", "id", "workspace_id", "product_id", unique=True),
         UniqueConstraint("source_inventory_movement_id", name="uq_inventory_cost_layers_source_movement"),
         Index("ix_inventory_cost_layers_fifo", "workspace_id", "product_id", "created_at", "id"),
         CheckConstraint("quantity_received > 0", name="ck_inventory_cost_layers_received_positive"),
@@ -224,6 +226,7 @@ class InventoryCostAllocation(Base):
             "inventory_movement_id", "cost_layer_id",
             name="uq_inventory_cost_allocations_movement_layer",
         ),
+        Index("uq_inventory_cost_allocations_id_layer_workspace", "id", "cost_layer_id", "workspace_id", unique=True),
         Index(
             "ix_inventory_cost_allocations_workspace_movement",
             "workspace_id", "inventory_movement_id",
@@ -242,6 +245,95 @@ class InventoryCostAllocation(Base):
     inventory_movement_id: Mapped[str] = mapped_column(String(36), nullable=False)
     cost_layer_id: Mapped[str] = mapped_column(String(36), nullable=False)
     quantity_allocated: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    extended_cost: Mapped[Decimal | None] = mapped_column(Numeric(30, 8), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+
+class InventoryReturn(Base):
+    """A product return linked to exactly one original sale movement."""
+
+    __tablename__ = "inventory_returns"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_sale_movement_id", "workspace_id", "product_id"],
+            ["inventory_movements.id", "inventory_movements.workspace_id", "inventory_movements.product_id"],
+            name="fk_inventory_returns_source_sale_workspace_product",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["return_movement_id", "workspace_id", "product_id"],
+            ["inventory_movements.id", "inventory_movements.workspace_id", "inventory_movements.product_id"],
+            name="fk_inventory_returns_movement_workspace_product",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("id", "workspace_id", "product_id", name="uq_inventory_returns_id_workspace_product"),
+        UniqueConstraint("return_movement_id", name="uq_inventory_returns_return_movement"),
+        Index("ix_inventory_returns_workspace_source_sale", "workspace_id", "source_sale_movement_id"),
+        CheckConstraint("quantity_returned > 0", name="ck_inventory_returns_quantity_positive"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_sale_movement_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    return_movement_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    quantity_returned: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class InventoryCostReturnAllocation(Base):
+    """Immutable cost reversal linking a return to the original sale allocation."""
+
+    __tablename__ = "inventory_cost_return_allocations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["inventory_return_id", "workspace_id", "product_id"],
+            ["inventory_returns.id", "inventory_returns.workspace_id", "inventory_returns.product_id"],
+            name="fk_inventory_cost_return_allocations_return_workspace_product",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["cost_layer_id", "workspace_id", "product_id"],
+            ["inventory_cost_layers.id", "inventory_cost_layers.workspace_id", "inventory_cost_layers.product_id"],
+            name="fk_inventory_cost_return_allocations_layer_workspace_product",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_cost_allocation_id", "cost_layer_id", "workspace_id"],
+            ["inventory_cost_allocations.id", "inventory_cost_allocations.cost_layer_id", "inventory_cost_allocations.workspace_id"],
+            name="fk_inventory_cost_return_allocations_source_layer_workspace",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "inventory_return_id", "source_cost_allocation_id",
+            name="uq_inventory_cost_return_allocations_return_source",
+        ),
+        Index(
+            "ix_inventory_cost_return_allocations_workspace_return",
+            "workspace_id", "inventory_return_id",
+        ),
+        CheckConstraint(
+            "quantity_returned > 0",
+            name="ck_inventory_cost_return_allocations_quantity_positive",
+        ),
+        CheckConstraint(
+            "((unit_cost IS NULL AND currency IS NULL AND extended_cost IS NULL) OR "
+            "(unit_cost IS NOT NULL AND unit_cost >= 0 AND currency IS NOT NULL "
+            "AND extended_cost IS NOT NULL AND extended_cost >= 0))",
+            name="ck_inventory_cost_return_allocations_cost_currency_pair",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    inventory_return_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_cost_allocation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    cost_layer_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    quantity_returned: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     extended_cost: Mapped[Decimal | None] = mapped_column(Numeric(30, 8), nullable=True)

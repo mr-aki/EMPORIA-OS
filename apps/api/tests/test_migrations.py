@@ -37,11 +37,13 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "purchase_order_receipt_lines",
             "inventory_cost_layers",
             "inventory_cost_allocations",
+            "inventory_returns",
+            "inventory_cost_return_allocations",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0016_fifo_inventory_costs"
+        assert revision == "0017_sale_linked_returns"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -81,6 +83,22 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
         }
         assert "ix_inventory_movements_workspace_product_created_at" in {
             item["name"] for item in inspector.get_indexes("inventory_movements")
+        }
+        assert "uq_inventory_movements_id_workspace_product" in {
+            item["name"] for item in inspector.get_indexes("inventory_movements")
+        }
+        assert "uq_inventory_cost_layers_id_workspace_product" in {
+            item["name"] for item in inspector.get_indexes("inventory_cost_layers")
+        }
+        assert "uq_inventory_cost_allocations_id_layer_workspace" in {
+            item["name"] for item in inspector.get_indexes("inventory_cost_allocations")
+        }
+        assert "fk_inventory_returns_source_sale_workspace_product" in {
+            item["name"] for item in inspector.get_foreign_keys("inventory_returns")
+        }
+        assert "fk_inventory_cost_return_allocations_source_layer_workspace" in {
+            item["name"]
+            for item in inspector.get_foreign_keys("inventory_cost_return_allocations")
         }
         assert "ix_products_workspace_created_at" in {
             item["name"] for item in inspector.get_indexes("products")
@@ -244,6 +262,8 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         assert "business_action_requests" in inspector.get_table_names()
         assert "products" in inspector.get_table_names()
         assert "inventory_movements" in inspector.get_table_names()
+        assert "inventory_returns" in inspector.get_table_names()
+        assert "inventory_cost_return_allocations" in inspector.get_table_names()
         assert "ix_ventures_workspace_id" in {
             item["name"] for item in inspector.get_indexes("ventures")
         }

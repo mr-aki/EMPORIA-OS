@@ -6,6 +6,7 @@ on:
       - feat/supplier-purchase-order-procurement-20261119
       - feat/procurement-cost-reporting-20261120
       - feat/fifo-inventory-costing-20261124
+      - feat/sale-linked-inventory-returns-20261124
   pull_request:
     branches:
       - main

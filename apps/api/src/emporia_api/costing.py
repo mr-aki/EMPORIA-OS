@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from emporia_api.models import (
     InventoryCostAllocation,
     InventoryCostLayer,
+    InventoryCostReturnAllocation,
     InventoryMovement,
+    InventoryReturn,
 )
 
 
@@ -169,7 +171,7 @@ def inventory_cogs(
     workspace_id: str,
     product_id: str,
 ) -> dict[str, object]:
-    """Summarize recorded FIFO allocations for sales, excluding non-sale write-offs."""
+    """Summarize gross sales, linked returns, and net FIFO COGS by currency."""
     join_condition = and_(
         InventoryMovement.id == InventoryCostAllocation.inventory_movement_id,
         InventoryMovement.workspace_id == InventoryCostAllocation.workspace_id,
@@ -211,7 +213,7 @@ def inventory_cogs(
         )
     )
     totals = session.execute(base).one()
-    buckets = session.execute(
+    sale_buckets = session.execute(
         select(
             InventoryCostAllocation.currency,
             func.sum(InventoryCostAllocation.quantity_allocated),
@@ -227,17 +229,121 @@ def inventory_cogs(
         )
         .group_by(InventoryCostAllocation.currency)
         .order_by(InventoryCostAllocation.currency.asc())
+    ).all()
+
+    returned_quantity = int(
+        session.scalar(
+            select(func.coalesce(func.sum(InventoryReturn.quantity_returned), 0)).where(
+                InventoryReturn.workspace_id == workspace_id,
+                InventoryReturn.product_id == product_id,
+            )
+        )
+        or 0
+    )
+    return_totals = session.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            InventoryCostReturnAllocation.unit_cost.is_not(None),
+                            InventoryCostReturnAllocation.quantity_returned,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            InventoryCostReturnAllocation.unit_cost.is_(None),
+                            InventoryCostReturnAllocation.quantity_returned,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        )
+        .where(
+            InventoryCostReturnAllocation.workspace_id == workspace_id,
+            InventoryCostReturnAllocation.product_id == product_id,
+        )
+    ).one()
+    return_buckets = session.execute(
+        select(
+            InventoryCostReturnAllocation.currency,
+            func.sum(InventoryCostReturnAllocation.quantity_returned),
+            func.sum(InventoryCostReturnAllocation.extended_cost),
+        )
+        .where(
+            InventoryCostReturnAllocation.workspace_id == workspace_id,
+            InventoryCostReturnAllocation.product_id == product_id,
+            InventoryCostReturnAllocation.currency.is_not(None),
+        )
+        .group_by(InventoryCostReturnAllocation.currency)
+        .order_by(InventoryCostReturnAllocation.currency.asc())
+    ).all()
+
+    gross_by_currency = {
+        row[0]: (int(row[1] or 0), row[2] or Decimal(0))
+        for row in sale_buckets
+    }
+    returned_by_currency = {
+        row[0]: (int(row[1] or 0), row[2] or Decimal(0))
+        for row in return_buckets
+    }
+    net_by_currency = []
+    for currency in sorted(set(gross_by_currency) | set(returned_by_currency)):
+        sold_quantity, sold_cost = gross_by_currency.get(currency, (0, Decimal(0)))
+        returned_units, returned_cost = returned_by_currency.get(
+            currency, (0, Decimal(0))
+        )
+        net_by_currency.append(
+            {
+                "currency": currency,
+                "quantity": sold_quantity - returned_units,
+                "total_cost": sold_cost - returned_cost,
+            }
+        )
+
+    total_sold = int(
+        session.scalar(
+            select(
+                func.coalesce(func.sum(-InventoryMovement.quantity_delta), 0)
+            ).where(
+                InventoryMovement.workspace_id == workspace_id,
+                InventoryMovement.product_id == product_id,
+                InventoryMovement.movement_type == "sale",
+            )
+        )
+        or 0
     )
     return {
         "allocated_quantity_sold": int(totals[0] or 0),
         "costed_quantity_sold": int(totals[1] or 0),
         "uncosted_quantity_sold": int(totals[2] or 0),
+        "allocated_quantity_returned": returned_quantity,
+        "costed_quantity_returned": int(return_totals[0] or 0),
+        "uncosted_quantity_returned": int(return_totals[1] or 0),
+        "net_quantity_sold": total_sold - returned_quantity,
         "by_currency": [
             {
                 "currency": row[0],
                 "quantity": int(row[1] or 0),
                 "total_cost": row[2] or Decimal(0),
             }
-            for row in buckets
+            for row in sale_buckets
         ],
+        "by_currency_returns": [
+            {
+                "currency": row[0],
+                "quantity": int(row[1] or 0),
+                "total_cost": row[2] or Decimal(0),
+            }
+            for row in return_buckets
+        ],
+        "by_currency_net": net_by_currency,
     }
