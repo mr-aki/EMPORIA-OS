@@ -24,4 +24,4 @@ def test_fifteen_specialists_have_complete_advisory_execution_contracts():
         assert agent.required_context
         assert len(agent.system_prompt) > 800
         assert "Never fabricate" in agent.system_prompt
-        assert "no action tools are enabled" in agent.system_prompt
+        assert "has no action tools enabled" in agent.system_prompt
