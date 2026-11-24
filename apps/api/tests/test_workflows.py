@@ -70,6 +70,9 @@ def test_workflow_enqueue_is_persisted_and_idempotent(client, auth_headers, monk
     listed = client.get("/api/v1/workflows/runs", headers=auth_headers)
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [body["id"]]
+    queue_listing = client.get("/api/v1/jobs", headers=auth_headers)
+    assert queue_listing.status_code == 200, queue_listing.text
+    assert any(item["kind"] == "workflow" for item in queue_listing.json())
     with SessionLocal() as session:
         job = session.get(BackgroundJob, body["background_job_id"])
         stored = session.get(WorkflowRun, body["id"])
