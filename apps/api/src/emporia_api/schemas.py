@@ -674,6 +674,11 @@ class WorkflowRunCreate(BaseModel):
         pattern=r"^[A-Za-z0-9._:-]+$",
     )
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_workflow_name(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
     @model_validator(mode="after")
     def bound_workflow_execution(self):
         total_tokens = sum(step.payload.max_tokens for step in self.steps)
