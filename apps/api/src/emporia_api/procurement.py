@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal, get_current_principal, require_write_access
+from emporia_api.costing import create_inbound_cost_layer
 from emporia_api.database import get_session
 from emporia_api.models import (
     AuditEvent,
@@ -566,6 +567,12 @@ def receive_purchase_order(
             )
             session.add(movement)
             session.flush()
+            create_inbound_cost_layer(
+                session,
+                movement,
+                unit_cost=line.unit_cost,
+                currency=order.currency,
+            )
             session.add(
                 PurchaseOrderReceiptLine(
                     workspace_id=actor.workspace_id,

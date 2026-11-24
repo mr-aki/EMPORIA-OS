@@ -5,9 +5,9 @@ from sqlalchemy import create_engine, inspect, text
 from emporia_api.config import settings
 
 
-def _upgrade(database_url: str) -> None:
+def _upgrade(database_url: str, revision: str = "head") -> None:
     settings.database_url = database_url
-    command.upgrade(Config("alembic.ini"), "head")
+    command.upgrade(Config("alembic.ini"), revision)
 
 
 def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
@@ -35,11 +35,13 @@ def test_fresh_database_upgrades_to_head(tmp_path, monkeypatch):
             "purchase_order_lines",
             "purchase_order_receipts",
             "purchase_order_receipt_lines",
+            "inventory_cost_layers",
+            "inventory_cost_allocations",
             "alembic_version",
         }.issubset(set(inspector.get_table_names()))
         with engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0015_procurement"
+        assert revision == "0016_fifo_inventory_costs"
         assert "uq_login_attempt_rate_limit_subject" in {
             item["name"] for item in inspector.get_unique_constraints("login_attempt_rate_limits")
         }
@@ -253,3 +255,77 @@ def test_migration_preserves_legacy_rows_and_adds_auth_tables(tmp_path, monkeypa
         }
     finally:
         legacy_engine.dispose()
+
+
+
+def test_fifo_cost_migration_backfills_existing_stock_as_uncosted(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+
+    database_url = f"sqlite:///{tmp_path / 'fifo-backfill.db'}"
+    monkeypatch.setattr(settings, "database_url", database_url)
+    _upgrade(database_url, "0015_procurement")
+
+    engine = create_engine(database_url)
+    created_at = datetime.now(UTC).replace(tzinfo=None)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO products (
+                        id, workspace_id, sku, name, description, unit_price,
+                        currency, status, created_at, updated_at
+                    ) VALUES (
+                        'legacy-product', 'legacy-workspace', 'LEGACY-001',
+                        'Legacy stock', '', 10.0000, 'USD', 'active', :created_at, :created_at
+                    )
+                    """
+                ),
+                {"created_at": created_at},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO inventory_movements (
+                        id, workspace_id, product_id, movement_type, quantity_delta,
+                        quantity_after, reason, reference, idempotency_key, created_at
+                    ) VALUES (
+                        'legacy-receipt', 'legacy-workspace', 'legacy-product', 'receipt',
+                        8, 8, 'legacy opening receipt', NULL, 'legacy-receipt-key', :created_at
+                    )
+                    """
+                ),
+                {"created_at": created_at},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO inventory_movements (
+                        id, workspace_id, product_id, movement_type, quantity_delta,
+                        quantity_after, reason, reference, idempotency_key, created_at
+                    ) VALUES (
+                        'legacy-sale', 'legacy-workspace', 'legacy-product', 'sale',
+                        -3, 5, 'legacy sale', NULL, 'legacy-sale-key', :created_at
+                    )
+                    """
+                ),
+                {"created_at": created_at},
+            )
+
+        _upgrade(database_url)
+
+        with engine.connect() as connection:
+            layer = connection.execute(
+                text(
+                    """
+                    SELECT source_type, quantity_received, quantity_remaining,
+                           unit_cost, currency, source_inventory_movement_id
+                    FROM inventory_cost_layers
+                    WHERE workspace_id = 'legacy-workspace'
+                      AND product_id = 'legacy-product'
+                    """
+                )
+            ).one()
+        assert layer == ("opening_balance", 5, 5, None, None, None)
+    finally:
+        engine.dispose()

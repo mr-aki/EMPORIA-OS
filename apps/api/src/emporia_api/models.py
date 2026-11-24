@@ -154,6 +154,100 @@ class InventoryMovement(Base):
 
 
 
+class InventoryCostLayer(Base):
+    """FIFO receipt layer; unknown-cost stock remains explicitly uncosted."""
+
+    __tablename__ = "inventory_cost_layers"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["product_id", "workspace_id"],
+            ["products.id", "products.workspace_id"],
+            name="fk_inventory_cost_layers_product_workspace",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_inventory_movement_id", "workspace_id"],
+            ["inventory_movements.id", "inventory_movements.workspace_id"],
+            name="fk_inventory_cost_layers_source_movement_workspace",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("id", "workspace_id", name="uq_inventory_cost_layers_id_workspace"),
+        UniqueConstraint("source_inventory_movement_id", name="uq_inventory_cost_layers_source_movement"),
+        Index("ix_inventory_cost_layers_fifo", "workspace_id", "product_id", "created_at", "id"),
+        CheckConstraint("quantity_received > 0", name="ck_inventory_cost_layers_received_positive"),
+        CheckConstraint(
+            "quantity_remaining >= 0 AND quantity_remaining <= quantity_received",
+            name="ck_inventory_cost_layers_remaining_range",
+        ),
+        CheckConstraint(
+            "((unit_cost IS NULL AND currency IS NULL) OR "
+            "(unit_cost IS NOT NULL AND unit_cost >= 0 AND currency IS NOT NULL))",
+            name="ck_inventory_cost_layers_cost_currency_pair",
+        ),
+        CheckConstraint(
+            "((source_type = 'opening_balance' AND source_inventory_movement_id IS NULL) OR "
+            "(source_type = 'inventory_movement' AND source_inventory_movement_id IS NOT NULL))",
+            name="ck_inventory_cost_layers_source",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_inventory_movement_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    quantity_received: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_remaining: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class InventoryCostAllocation(Base):
+    """Immutable FIFO cost allocation from a layer to an outbound inventory movement."""
+
+    __tablename__ = "inventory_cost_allocations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["inventory_movement_id", "workspace_id"],
+            ["inventory_movements.id", "inventory_movements.workspace_id"],
+            name="fk_inventory_cost_allocations_movement_workspace",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["cost_layer_id", "workspace_id"],
+            ["inventory_cost_layers.id", "inventory_cost_layers.workspace_id"],
+            name="fk_inventory_cost_allocations_layer_workspace",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "inventory_movement_id", "cost_layer_id",
+            name="uq_inventory_cost_allocations_movement_layer",
+        ),
+        Index(
+            "ix_inventory_cost_allocations_workspace_movement",
+            "workspace_id", "inventory_movement_id",
+        ),
+        CheckConstraint("quantity_allocated > 0", name="ck_inventory_cost_allocations_quantity_positive"),
+        CheckConstraint(
+            "((unit_cost IS NULL AND currency IS NULL AND extended_cost IS NULL) OR "
+            "(unit_cost IS NOT NULL AND unit_cost >= 0 AND currency IS NOT NULL "
+            "AND extended_cost IS NOT NULL AND extended_cost >= 0))",
+            name="ck_inventory_cost_allocations_cost_currency_pair",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    inventory_movement_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    cost_layer_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    quantity_allocated: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    extended_cost: Mapped[Decimal | None] = mapped_column(Numeric(30, 8), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class Supplier(Base):
     """Workspace-owned supplier contact and lifecycle record."""
 
