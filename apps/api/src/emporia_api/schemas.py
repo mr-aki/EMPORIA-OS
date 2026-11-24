@@ -515,7 +515,7 @@ JobSubmission = Annotated[
 
 class JobRead(BaseModel):
     id: str
-    kind: Literal["agent", "skill"]
+    kind: Literal["agent", "skill", "workflow"]
     target_id: str
     status: Literal["queued", "running", "retry_wait", "succeeded", "failed", "cancelled"]
     attempts: int
