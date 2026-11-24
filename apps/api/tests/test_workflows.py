@@ -4,10 +4,10 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 
+from emporia_api.config import settings
 from emporia_api.database import SessionLocal
 from emporia_api.job_queue import claim_next_job
 from emporia_api.models import BackgroundJob, WorkflowRun, utcnow
-from emporia_api.config import settings
 
 
 class FakeGateway:
