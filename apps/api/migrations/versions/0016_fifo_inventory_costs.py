@@ -132,7 +132,7 @@ def upgrade() -> None:
             """
         )
     ).mappings()
-    created_at = datetime.now(UTC)
+    created_at = datetime.now(UTC).replace(tzinfo=None).isoformat(sep=" ")
     insert_layer = sa.text(
         """
         INSERT INTO inventory_cost_layers (

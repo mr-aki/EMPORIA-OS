@@ -143,9 +143,10 @@ def test_fifo_sale_consumes_oldest_purchase_receipt_layers_and_replays_once(
     assert Decimal(str(valuation_data["by_currency"][0]["total_cost"])) == Decimal("12.00000000")
 
     with SessionLocal() as session:
-        allocations = list(
+        allocations = sorted(
             session.query(InventoryCostAllocation)
-            .filter(InventoryCostAllocation.inventory_movement_id == sale.json()["id"])
+            .filter(InventoryCostAllocation.inventory_movement_id == sale.json()["id"]),
+            key=lambda row: row.unit_cost,
         )
         layers = list(
             session.query(InventoryCostLayer)
