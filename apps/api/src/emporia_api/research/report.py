@@ -9,35 +9,55 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from emporia_api.network.brave_search import BraveSearchClient
 
 
-_TRACKING_PARAMETERS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source"}
+_TRACKING_PARAMETERS = {"fbclid", "gclid", "mc_cid", "mc_eid"}
 
 
 def canonicalize_source_url(url: str) -> str:
-    """Normalize common URL variants for deduplication without changing display URLs."""
-    parts = urlsplit(url)
-    hostname = (parts.hostname or "").lower().rstrip(".")
-    hostname = hostname.removeprefix("www.")
+    """Normalize known tracking variants without merging distinct source resources.
+
+    Query parameter names such as source and ref are deliberately retained:
+    they can identify different catalogue items or marketplace views. Query ordering,
+    repeated values, the HTTP scheme, and blank values are also preserved because
+    upstream applications may assign meaning to them.
+    """
     try:
+        parts = urlsplit(url)
+        hostname = parts.hostname
         port = parts.port
-    except ValueError:
-        port = None
+    except (TypeError, ValueError):
+        return ""
+
+    scheme = parts.scheme.lower()
+    if (
+        scheme not in {"https", "http"}
+        or not hostname
+        or parts.username is not None
+        or parts.password is not None
+    ):
+        return ""
+
+    hostname = hostname.lower().rstrip(".").removeprefix("www.")
+    if not hostname:
+        return ""
     if ":" in hostname and not hostname.startswith("["):
         hostname = f"[{hostname}]"
+
     netloc = hostname
-    if port and not (
-        (parts.scheme.lower() == "https" and port == 443)
-        or (parts.scheme.lower() == "http" and port == 80)
+    if port is not None and not (
+        (scheme == "https" and port == 443)
+        or (scheme == "http" and port == 80)
     ):
         netloc = f"{netloc}:{port}"
+
     path = parts.path.rstrip("/") or "/"
     query_items = [
         (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=False)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
         if not key.lower().startswith("utm_")
         and key.lower() not in _TRACKING_PARAMETERS
     ]
-    normalized_query = urlencode(sorted(query_items))
-    return urlunsplit(("https", netloc, path, normalized_query, ""))
+    normalized_query = urlencode(query_items)
+    return urlunsplit((scheme, netloc, path, normalized_query, ""))
 
 
 def _tokens(value: str) -> set[str]:
