@@ -178,12 +178,21 @@ class BraveSearchClient:
                 url = item.get("url")
                 if not isinstance(url, str):
                     continue
-                parts = urlsplit(url)
+                # A malformed provider URL must not discard valid sources in the same response.
+                if any(character.isspace() or ord(character) < 0x20 for character in url):
+                    continue
+                try:
+                    parts = urlsplit(url)
+                    hostname = parts.hostname
+                    port = parts.port
+                except (TypeError, ValueError):
+                    continue
                 if (
-                    parts.scheme not in {"https", "http"}
-                    or not parts.hostname
-                    or parts.username
-                    or parts.password
+                    parts.scheme.lower() not in {"https", "http"}
+                    or not hostname
+                    or parts.username is not None
+                    or parts.password is not None
+                    or port == 0
                 ):
                     continue
 
@@ -202,7 +211,7 @@ class BraveSearchClient:
                         index=len(sources) + 1,
                         url=url,
                         title=str(item.get("title") or metadata.get("title") or url)[:300],
-                        hostname=str(metadata.get("hostname") or parts.hostname)[:200],
+                        hostname=hostname[:200],
                         snippets=tuple(
                             snippet[:3000]
                             for snippet in raw_snippets[:4]

@@ -97,6 +97,43 @@ def test_brave_search_uses_official_endpoint_and_normalizes_sources():
     assert len(source.age) == 4
 
 
+
+def test_brave_search_skips_malformed_sources_and_uses_url_hostname():
+    payload = {
+        "grounding": {
+            "generic": [
+                {"url": "https://[invalid-ipv6/report", "title": "Malformed IPv6"},
+                {"url": "https://shop.example:99999/product", "title": "Invalid port"},
+                {"url": "https://@credentialed.example/product", "title": "Empty userinfo"},
+                {"url": "https://shop.example/bad path", "title": "Whitespace URL"},
+                {
+                    "url": "https://trusted.example/report",
+                    "title": "Valid report",
+                    "snippets": ["Verified source passage."],
+                },
+            ],
+        },
+        "sources": {
+            "https://trusted.example/report": {
+                "hostname": "attacker.example",
+                "title": "Valid report",
+                "age": [],
+            }
+        },
+    }
+    client = BraveSearchClient(
+        config=make_config(),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload)),
+    )
+
+    result = asyncio.run(client.search("market research"))
+
+    assert len(result.sources) == 1
+    assert result.sources[0].url == "https://trusted.example/report"
+    assert result.sources[0].hostname == "trusted.example"
+    assert result.sources[0].snippets == ("Verified source passage.",)
+
+
 def test_brave_search_accepts_language_tags():
     client = BraveSearchClient(
         config=make_config(),
