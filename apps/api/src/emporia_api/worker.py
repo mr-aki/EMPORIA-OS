@@ -47,26 +47,44 @@ def _record_job_failure(
     job: BackgroundJob,
     message: str,
     retryable: bool,
-) -> None:
+) -> bool:
+    """Record a failure only while this worker still owns the running job."""
     now = utcnow()
     should_retry = retryable and job.attempts < job.max_attempts
-    job.last_error = message[:1000]
-    job.locked_at = None
-    job.locked_by = None
-    job.updated_at = now
+    values = {
+        "last_error": message[:1000],
+        "locked_at": None,
+        "locked_by": None,
+        "updated_at": now,
+    }
 
     if should_retry:
         delay = retry_delay_seconds(job.attempts)
-        job.status = "retry_wait"
-        job.available_at = now + timedelta(seconds=delay)
-        job.completed_at = None
+        values.update(
+            status="retry_wait",
+            available_at=now + timedelta(seconds=delay),
+            completed_at=None,
+        )
         action = "job.retry_scheduled"
         detail = f"attempt:{job.attempts};retry_in:{delay}s"
     else:
-        job.status = "failed"
-        job.completed_at = now
+        values.update(status="failed", completed_at=now)
         action = "job.failed"
         detail = f"attempt:{job.attempts};terminal_failure"
+
+    recorded = session.execute(
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == job.id,
+            BackgroundJob.status == "running",
+            BackgroundJob.locked_by == job.locked_by,
+        )
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    if recorded.rowcount != 1:
+        session.rollback()
+        return False
 
     session.add(AuditEvent(
         workspace_id=job.workspace_id,
@@ -77,6 +95,7 @@ def _record_job_failure(
         detail=detail,
     ))
     session.commit()
+    return True
 
 
 def _resolve_current_principal(session: Session, job: BackgroundJob) -> Principal:
@@ -217,9 +236,10 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                     session.rollback()
                     return False
                 session.refresh(job)
-                _record_job_failure(
+                if not _record_job_failure(
                     session, job, "Unsupported background job kind", retryable=False
-                )
+                ):
+                    return False
                 return True
 
             await _cancel_lease_heartbeat(heartbeat)
@@ -227,14 +247,29 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                 session.rollback()
                 logger.warning("Discarding stale worker completion: id=%s", job_id)
                 return False
-            session.refresh(job)
-            job.status = "succeeded"
-            job.result_id = result.id
-            job.last_error = ""
-            job.completed_at = utcnow()
-            job.updated_at = job.completed_at
-            job.locked_at = None
-            job.locked_by = None
+            completed_at = utcnow()
+            completed = session.execute(
+                update(BackgroundJob)
+                .where(
+                    BackgroundJob.id == job.id,
+                    BackgroundJob.status == "running",
+                    BackgroundJob.locked_by == worker_id,
+                )
+                .values(
+                    status="succeeded",
+                    result_id=result.id,
+                    last_error="",
+                    completed_at=completed_at,
+                    updated_at=completed_at,
+                    locked_at=None,
+                    locked_by=None,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if completed.rowcount != 1:
+                session.rollback()
+                logger.warning("Discarding stale worker completion: id=%s", job_id)
+                return False
             session.add(AuditEvent(
                 workspace_id=job.workspace_id,
                 actor=job.actor,
@@ -257,9 +292,11 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
             retryable = exc.status_code in RETRYABLE_HTTP_STATUSES
             if not retryable or job.attempts >= job.max_attempts:
                 _mark_workflow_failed(session, job, message)
-            _record_job_failure(
+            if not _record_job_failure(
                 session, job, message, retryable=retryable
-            )
+            ):
+                logger.warning("Discarding stale worker failure: id=%s", job_id)
+                return False
             logger.warning(
                 "Background job failed: id=%s status=%s attempt=%s",
                 job.id,
@@ -276,9 +313,11 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
             session.refresh(job)
             logger.exception("Unexpected background job failure: id=%s", job.id)
             _mark_workflow_failed(session, job, "Unexpected worker execution failure")
-            _record_job_failure(
+            if not _record_job_failure(
                 session, job, "Unexpected worker execution failure", retryable=False
-            )
+            ):
+                logger.warning("Discarding stale worker error: id=%s", job_id)
+                return False
             return True
         finally:
             await _cancel_lease_heartbeat(heartbeat)
