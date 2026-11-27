@@ -207,6 +207,9 @@ def test_worker_stops_after_cancellation_during_an_inflight_step(
         )
 
     monkeypatch.setattr("emporia_api.main.execute_agent", cancel_during_agent)
+    # Simulate cancellation winning immediately after a lease renewal but before
+    # the worker's terminal database transition.
+    monkeypatch.setattr("emporia_api.worker._renew_job_lease", lambda *_: True)
     from emporia_api.worker import run_one_job
 
     # The active provider call is allowed to finish, but the worker must not
