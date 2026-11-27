@@ -699,7 +699,7 @@ class WorkflowStepRead(BaseModel):
     sequence: int
     kind: Literal["agent", "skill"]
     target_id: str
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
     result_id: str | None = None
     error_message: str = ""
     started_at: datetime | None = None
