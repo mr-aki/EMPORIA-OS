@@ -13,7 +13,6 @@ from emporia_api.models import AgentRun, AuditEvent, BackgroundJob, SkillRun, Wo
 from emporia_api.schemas import AgentRunCreate, SkillRunCreate
 from emporia_api.skills.registry import get_skill, validate_skill_inputs
 
-
 _UNSET = object()
 
 
