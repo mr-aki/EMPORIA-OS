@@ -9,14 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from emporia_api.auth import Principal
-from emporia_api.models import (
-    AgentRun,
-    AuditEvent,
-    BackgroundJob,
-    SkillRun,
-    utcnow,
-    WorkflowRun,
-)
+from emporia_api.models import AgentRun, AuditEvent, BackgroundJob, SkillRun, WorkflowRun, utcnow
 from emporia_api.schemas import AgentRunCreate, SkillRunCreate
 from emporia_api.skills.registry import get_skill, validate_skill_inputs
 
