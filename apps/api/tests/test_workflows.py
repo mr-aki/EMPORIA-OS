@@ -176,6 +176,66 @@ def test_workflows_are_tenant_scoped_and_cancellable_before_claim(
     assert conflict.status_code == 409
 
 
+
+def test_worker_stops_after_cancellation_during_an_inflight_step(
+    client, auth_headers, monkeypatch
+):
+    monkeypatch.setattr("emporia_api.workflows.api.provider_gateway", FakeGateway())
+    queued = client.post(
+        "/api/v1/workflows/runs",
+        headers=auth_headers,
+        json=workflow_payload(),
+    )
+    assert queued.status_code == 202, queued.text
+    workflow_id = queued.json()["id"]
+    calls = []
+
+    async def cancel_during_agent(agent_id, payload, response, session, actor, idempotency_key=None):
+        calls.append(agent_id)
+        job = session.query(BackgroundJob).filter_by(
+            kind="workflow",
+            status="running",
+        ).one()
+        from emporia_api.workflows.api import cancel_workflow
+
+        cancelled = cancel_workflow(job.result_id, session, actor)
+        assert cancelled.status == "cancelled"
+        return SimpleNamespace(
+            id="completed-inflight-agent-run",
+            status="completed",
+            output="This in-flight result is not handed to another step.",
+        )
+
+    monkeypatch.setattr("emporia_api.main.execute_agent", cancel_during_agent)
+    # Simulate cancellation winning immediately after a lease renewal but before
+    # the worker's terminal database transition.
+    monkeypatch.setattr("emporia_api.worker._renew_job_lease", lambda *_: True)
+    from emporia_api.worker import run_one_job
+
+    # The active provider call is allowed to finish, but the worker must not
+    # start the next workflow step or overwrite the cancellation.
+    assert asyncio.run(run_one_job("workflow-cancellation-worker")) is False
+    assert calls == ["commerce-strategist"]
+
+    cancelled = client.get(
+        f"/api/v1/workflows/runs/{workflow_id}",
+        headers=auth_headers,
+    )
+    assert cancelled.status_code == 200
+    body = cancelled.json()
+    assert body["status"] == "cancelled"
+    assert [step["status"] for step in body["steps"]] == ["cancelled", "cancelled"]
+    assert "in-flight provider call may still complete" in body["steps"][0]["error_message"]
+    assert body["steps"][1]["error_message"] == "Cancelled before execution."
+
+    with SessionLocal() as session:
+        job = session.get(BackgroundJob, queued.json()["background_job_id"])
+        assert job is not None
+        assert job.status == "cancelled"
+        assert job.locked_at is None
+        assert job.locked_by is None
+
+
 def test_terminal_step_failure_is_saved_on_workflow_and_job(
     client, auth_headers, monkeypatch
 ):

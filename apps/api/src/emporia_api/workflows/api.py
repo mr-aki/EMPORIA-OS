@@ -304,7 +304,7 @@ def get_workflow(workflow_id: str, session: SessionDep, actor: AuthDep):
 
 @router.post("/runs/{workflow_id}/cancel", response_model=WorkflowRunRead)
 def cancel_workflow(workflow_id: str, session: SessionDep, actor: AuthDep):
-    """Cancel only before the worker claims the workflow; running model calls are not interrupted."""
+    """Cancel queued or running work; an in-flight provider call may still finish."""
     require_write_access(actor)
     workflow = session.scalar(select(WorkflowRun).where(
         WorkflowRun.id == workflow_id,
@@ -312,36 +312,107 @@ def cancel_workflow(workflow_id: str, session: SessionDep, actor: AuthDep):
     ))
     if workflow is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
-    result = session.execute(
-        update(BackgroundJob)
-        .where(
-            BackgroundJob.id == workflow.background_job_id,
-            BackgroundJob.workspace_id == actor.workspace_id,
-            BackgroundJob.status.in_(("queued", "retry_wait")),
-        )
-        .values(
-            status="cancelled",
-            completed_at=utcnow(),
-            updated_at=utcnow(),
-            locked_at=None,
-            locked_by=None,
-        )
-    )
-    if result.rowcount != 1:
-        session.rollback()
+    if workflow.status not in {"queued", "running"}:
         raise HTTPException(
             status_code=409,
             detail=f"Workflow cannot be cancelled while status is {workflow.status}",
         )
-    workflow.status = "cancelled"
-    workflow.completed_at = utcnow()
+
+    job = session.scalar(select(BackgroundJob).where(
+        BackgroundJob.id == workflow.background_job_id,
+        BackgroundJob.workspace_id == actor.workspace_id,
+    ))
+    if job is None or job.status not in {"queued", "retry_wait", "running"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow background job is no longer cancellable",
+        )
+
+    now = utcnow()
+    previous_workflow_status = workflow.status
+    previous_job_status = job.status
+    states = workflow.steps
+    for step in states:
+        if step.get("status") in {"queued", "running"}:
+            was_running = step.get("status") == "running"
+            step["status"] = "cancelled"
+            step["error_message"] = (
+                "Cancellation requested; an in-flight provider call may still complete and incur cost."
+                if was_running
+                else "Cancelled before execution."
+            )
+            step["completed_at"] = now.isoformat()
+
+    job_result = session.execute(
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == workflow.background_job_id,
+            BackgroundJob.workspace_id == actor.workspace_id,
+            BackgroundJob.status.in_(("queued", "retry_wait", "running")),
+        )
+        .values(
+            status="cancelled",
+            completed_at=now,
+            updated_at=now,
+            locked_at=None,
+            locked_by=None,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if job_result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow background job changed before cancellation completed",
+        )
+
+    workflow_result = session.execute(
+        update(WorkflowRun)
+        .where(
+            WorkflowRun.id == workflow.id,
+            WorkflowRun.workspace_id == actor.workspace_id,
+            WorkflowRun.status.in_(("queued", "running")),
+        )
+        .values(
+            status="cancelled",
+            steps_json=json.dumps(
+                states,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+            error_message="Cancelled by user.",
+            completed_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if workflow_result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow changed before cancellation completed",
+        )
+
+    detail = (
+        "cancelled_while_running"
+        if previous_workflow_status == "running"
+        else "cancelled_before_worker_claim"
+    )
     session.add(AuditEvent(
         workspace_id=actor.workspace_id,
         actor=actor.user_id,
         action="workflow.cancelled",
         resource_type="workflow_run",
         resource_id=workflow.id,
-        detail="cancelled_before_worker_claim",
+        detail=f"{detail};job_status:{previous_job_status}",
+    ))
+    session.add(AuditEvent(
+        workspace_id=actor.workspace_id,
+        actor=actor.user_id,
+        action="job.cancelled",
+        resource_type="background_job",
+        resource_id=job.id,
+        detail=f"workflow:{workflow.id}",
     ))
     session.commit()
     session.refresh(workflow)
