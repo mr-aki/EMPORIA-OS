@@ -236,11 +236,9 @@ async def execute_claimed_job(job_id: str, worker_id: str) -> bool:
                     session.rollback()
                     return False
                 session.refresh(job)
-                if not _record_job_failure(
+                return _record_job_failure(
                     session, job, "Unsupported background job kind", retryable=False
-                ):
-                    return False
-                return True
+                )
 
             await _cancel_lease_heartbeat(heartbeat)
             if not await asyncio.to_thread(_renew_job_lease, job_id, worker_id):
