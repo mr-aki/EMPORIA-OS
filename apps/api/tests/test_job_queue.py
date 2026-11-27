@@ -16,7 +16,7 @@ from emporia_api.models import (
     WorkspaceMembership,
     utcnow,
 )
-from emporia_api.worker import _renew_job_lease, run_one_job
+from emporia_api.worker import _record_job_failure, _renew_job_lease, run_one_job
 
 
 def create_job(client, **overrides):
@@ -394,3 +394,25 @@ def test_worker_executes_multi_query_research_agent_job_end_to_end(
                 )
             ).all()
         )
+
+
+def test_late_worker_failure_cannot_overwrite_cancelled_job(client):
+    job_id, _, _ = create_job(
+        client,
+        status="cancelled",
+        locked_at=None,
+        locked_by=None,
+        completed_at=utcnow(),
+    )
+
+    with SessionLocal() as session:
+        job = session.get(BackgroundJob, job_id)
+        assert job is not None
+        assert _record_job_failure(
+            session,
+            job,
+            "A stale worker reported a late failure.",
+            retryable=True,
+        ) is False
+
+    assert get_job(job_id).status == "cancelled"
