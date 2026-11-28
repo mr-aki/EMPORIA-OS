@@ -65,7 +65,7 @@ def _extract_sections(output: str) -> dict[str, bool]:
                 continue
 
         # Four-space and tab-indented lines are code, not standalone headings.
-        if line.startswith("    ") or line.startswith("\t"):
+        if line.startswith(("    ", "\t")):
             if active_heading is not None and line.strip():
                 sections[active_heading] = True
             continue
