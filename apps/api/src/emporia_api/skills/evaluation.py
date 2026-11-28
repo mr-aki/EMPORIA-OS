@@ -11,8 +11,10 @@ from typing import Any
 
 from emporia_api.skills.registry import SkillDefinition
 
-_HEADING_PREFIX = re.compile(r"^\s*#{1,6}\s+")
-_MARKDOWN_BOLD = re.compile(r"^\*\*(.+?)\*\*:?\s*$")
+_HEADING_PREFIX = re.compile(r"^ {0,3}#{1,6}[ \t]+")
+_MARKDOWN_BOLD = re.compile(r"^ {0,3}\*\*(.+?)\*\*:?[ \t]*$")
+_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
 
 
 def _normalise_heading(value: str) -> str:
@@ -20,12 +22,11 @@ def _normalise_heading(value: str) -> str:
 
 
 def _heading_from_line(line: str) -> str | None:
-    candidate = line.strip()
-    bold = _MARKDOWN_BOLD.match(candidate)
+    bold = _MARKDOWN_BOLD.match(line)
     if bold:
         candidate = bold.group(1)
-    elif _HEADING_PREFIX.match(candidate):
-        candidate = _HEADING_PREFIX.sub("", candidate, count=1).strip()
+    elif _HEADING_PREFIX.match(line):
+        candidate = _HEADING_PREFIX.sub("", line, count=1).strip()
     else:
         return None
     candidate = candidate.rstrip(":").strip()
@@ -33,11 +34,42 @@ def _heading_from_line(line: str) -> str | None:
 
 
 def _extract_sections(output: str) -> dict[str, bool]:
-    """Map normalized headings to whether their section contains non-whitespace text."""
+    """Map real Markdown headings to sections, ignoring heading-like code samples."""
     sections: dict[str, bool] = {}
     active_heading: str | None = None
+    fence_character: str | None = None
+    fence_length = 0
 
     for line in output.splitlines():
+        if fence_character is not None:
+            closing = _FENCE_CLOSE.match(line)
+            if (
+                closing is not None
+                and closing.group(1)[0] == fence_character
+                and len(closing.group(1)) >= fence_length
+            ):
+                fence_character = None
+                fence_length = 0
+            elif active_heading is not None and line.strip():
+                sections[active_heading] = True
+            continue
+
+        opening = _FENCE_OPEN.match(line)
+        if opening is not None:
+            marker = opening.group(1)
+            info = opening.group(2)
+            # CommonMark forbids backticks in a backtick-fence info string.
+            if marker[0] != "`" or "`" not in info:
+                fence_character = marker[0]
+                fence_length = len(marker)
+                continue
+
+        # Four-space and tab-indented lines are code, not standalone headings.
+        if line.startswith(("    ", "\t")):
+            if active_heading is not None and line.strip():
+                sections[active_heading] = True
+            continue
+
         heading = _heading_from_line(line)
         if heading is not None:
             active_heading = heading
