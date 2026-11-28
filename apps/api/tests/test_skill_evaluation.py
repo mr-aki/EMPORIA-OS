@@ -70,3 +70,55 @@ def test_evaluator_handles_empty_and_non_string_outputs():
 
     assert evaluate_skill_output(skill, "")["passed"] is False
     assert evaluate_skill_output(skill, None)["passed"] is False
+
+
+def test_evaluator_ignores_headings_inside_fenced_and_indented_code_blocks():
+    skill = get_skill("landed-cost-margin-analysis")
+    assert skill is not None
+    real_section, *code_only_sections = skill.output_sections
+    fence = chr(96) * 4
+    nested_fence = chr(96) * 3
+    output = "\n".join(
+        [
+            f"## {real_section}",
+            "Evidence is present.",
+            f"{fence}markdown",
+            f"## {code_only_sections[0]}",
+            "Looks complete in a code sample.",
+            nested_fence,
+            f"## {code_only_sections[1]}",
+            "Nested code sample heading.",
+            nested_fence,
+            fence,
+            "~~~markdown",
+            f"**{code_only_sections[2]}**:",
+            "Looks complete in a tilde code sample.",
+            "~~~",
+            f"    ## {code_only_sections[3]}",
+            "    Indented code body.",
+            f"\t**{code_only_sections[4]}**:",
+            "\tIndented code body.",
+        ]
+    )
+
+    result = evaluate_skill_output(skill, output)
+
+    assert result["passed"] is False
+    assert result["present_sections"] == [real_section]
+    assert result["missing_sections"] == code_only_sections
+    assert result["empty_sections"] == []
+
+
+def test_evaluator_still_accepts_bold_markdown_headings_outside_code_blocks():
+    skill = get_skill("landed-cost-margin-analysis")
+    assert skill is not None
+    output = "\n\n".join(
+        f"**{section}**:\nEvidence and analysis."
+        for section in skill.output_sections
+    )
+
+    result = evaluate_skill_output(skill, output)
+
+    assert result["passed"] is True
+    assert result["missing_sections"] == []
+    assert result["empty_sections"] == []
